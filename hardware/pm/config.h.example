@@ -1,0 +1,92 @@
+/*
+ * SUT Smart Bus - PM Sensor Configuration
+ * ========================================
+ * 
+ * INSTRUCTIONS:
+ * 1. Copy this file to "config.h" in the same folder
+ * 2. Edit the values below with your actual credentials
+ * 3. Upload to ESP32
+ * 
+ * NOTE: config.h is gitignored to protect your credentials
+ */
+
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// ============================================
+// WiFi Configuration
+// ============================================
+
+// Primary WiFi network (tried first)
+#define WIFI_SSID          "YOUR_WIFI_SSID"
+#define WIFI_PASSWORD      "YOUR_WIFI_PASSWORD"
+
+// WiFi connection timeout in milliseconds
+#define WIFI_TIMEOUT_MS    10000
+
+// Fallback WiFi networks (optional)
+#define WIFI_FALLBACK_1_SSID      "YOUR_BACKUP_SSID"
+#define WIFI_FALLBACK_1_PASSWORD  "YOUR_BACKUP_PASSWORD"
+
+// ============================================
+// MQTT Broker Configuration
+// ============================================
+
+// Primary MQTT server
+#define MQTT_SERVER        "183.89.203.247"
+#define MQTT_PORT          1883
+
+// MQTT Topics
+#define MQTT_TOPIC         "sut/bus/gps"
+#define MQTT_TOPIC_FAST    "sut/bus/gps/fast"
+#define MQTT_TOPIC_OTA     "sut/ota/pm"
+
+// ============================================
+// Device Configuration
+// ============================================
+
+// Bus Identification
+#define BUS_NAME           "SUT-BUS-01"
+#define WEB_NAME           "sutbus"
+
+// ============================================
+// Hardware Pins
+// ============================================
+
+// GPS Module (NEO-6M)
+#define GPS_RX_PIN         32
+#define GPS_TX_PIN         33
+
+// PM Sensor (PMS5003/7003)
+#define PMS_RX_PIN         16
+#define PMS_TX_PIN         17
+
+// DHT Sensor
+#define DHTPIN             14
+#define DHTTYPE            DHT11
+
+// SD Card
+#define SD_CS_PIN          5
+
+// I2C for RTC
+#define I2C_SDA            21
+#define I2C_SCL            22
+
+// ============================================
+// Timing Configuration (milliseconds)
+// ============================================
+#define INTERVAL_5S        5000   // MQTT publish interval
+#define INTERVAL_30S       30000  // SD card save interval
+#define GPS_INTERVAL       500    // Fast GPS publish interval
+
+// ============================================
+// OTA (Over-The-Air) Update Configuration
+// ============================================
+
+// Enable/disable OTA updates
+#define OTA_ENABLED        true
+
+// Current firmware version (update this when you upload new firmware)
+#define FIRMWARE_VERSION   "1.0.0"
+
+#endif // CONFIG_H
