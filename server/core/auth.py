@@ -17,6 +17,10 @@ PUBLIC_PATHS = [
     "/docs",
     "/openapi.json",
     "/redoc",
+    "/dashboard",
+    "/count",
+    "/static",
+    "/api/admin/login",
     "/api/debug/location",
 ]
 

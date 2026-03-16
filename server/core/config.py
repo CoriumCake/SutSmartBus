@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # Rate limiting (requests per minute)
     RATE_LIMIT_PER_MINUTE: int = 60
 
+    # OTA Settings
+    OTA_FALLBACK_IP: str = "203.158.3.14"
+    
+    # Database Settings
+    DB_FILE: str = "bus_passengers.db"
+
     class Config:
         env_file = ".env"
         extra = "ignore"  # Allow extra fields in .env

@@ -12,127 +12,17 @@ import { getRouteIdForBus } from '../utils/busRouteMapping';
 import { loadRoute, getAllRoutes } from '../utils/routeStorage';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { whiteMapStyle, darkMapStyle } from '../utils/mapStyles';
+import {
+  getRouteMetrics,
+  getDistanceFromLatLonInM,
+  simplifyPolyline
+} from '../utils/mapUtils';
+import GridOverlay from '../components/Map/GridOverlay';
 
 // Import custom bus icon
 const busIcon = require('../assets/W-bus-icon.png');
 
-// Helper to calculate total distance of a route and segment distances
-const getRouteMetrics = (waypoints) => {
-  let totalDistance = 0;
-  const segmentDistances = [];
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    const d = getDistanceFromLatLonInM_Static(
-      waypoints[i].latitude, waypoints[i].longitude,
-      waypoints[i + 1].latitude, waypoints[i + 1].longitude
-    );
-    totalDistance += d;
-    segmentDistances.push(d);
-  }
-  return { totalDistance, segmentDistances };
-};
-
-// Static version for helpers (copied from component)
-const deg2rad_Static = (deg) => deg * (Math.PI / 180);
-const getDistanceFromLatLonInM_Static = (lat1, lon1, lat2, lon2) => {
-  var R = 6371; // Radius of the earth in km
-  var dLat = deg2rad_Static(lat2 - lat1);
-  var dLon = deg2rad_Static(lon2 - lon1);
-  var a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(deg2rad_Static(lat1)) * Math.cos(deg2rad_Static(lat1)) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  var d = R * c; // Distance in km
-  return d * 1000; // Distance in m
-};
-
-// PERFORMANCE: Douglas-Peucker polyline simplification
-// Reduces points while preserving shape - tolerance in degrees (~5m per 0.00005)
-const perpendicularDistance = (point, lineStart, lineEnd) => {
-  const dx = lineEnd.longitude - lineStart.longitude;
-  const dy = lineEnd.latitude - lineStart.latitude;
-  const mag = Math.sqrt(dx * dx + dy * dy);
-  if (mag === 0) return 0;
-  const u = ((point.longitude - lineStart.longitude) * dx + (point.latitude - lineStart.latitude) * dy) / (mag * mag);
-  const closestX = lineStart.longitude + u * dx;
-  const closestY = lineStart.latitude + u * dy;
-  return Math.sqrt(Math.pow(point.longitude - closestX, 2) + Math.pow(point.latitude - closestY, 2));
-};
-
-const simplifyPolyline = (points, tolerance = 0.00003) => {
-  if (!points || points.length < 3) return points;
-
-  let maxDist = 0;
-  let maxIdx = 0;
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const dist = perpendicularDistance(points[i], points[0], points[points.length - 1]);
-    if (dist > maxDist) {
-      maxDist = dist;
-      maxIdx = i;
-    }
-  }
-
-  if (maxDist > tolerance) {
-    const left = simplifyPolyline(points.slice(0, maxIdx + 1), tolerance);
-    const right = simplifyPolyline(points.slice(maxIdx), tolerance);
-    return [...left.slice(0, -1), ...right];
-  }
-
-  return [points[0], points[points.length - 1]];
-};
-
-// Grid Overlay Component for Visual Alignment
-const GridOverlay = () => {
-  const { width, height } = Dimensions.get('window');
-  const gridSize = width / 20; // 20 columns = 5% width squares
-  const verticalLines = Math.ceil(width / gridSize);
-  const horizontalLines = Math.ceil(height / gridSize);
-
-  return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      {/* Vertical Lines */}
-      {Array.from({ length: verticalLines }).map((_, i) => (
-        <View
-          key={`v-${i}`}
-          style={{
-            position: 'absolute',
-            left: i * gridSize,
-            top: 0,
-            bottom: 0,
-            width: 1,
-            backgroundColor: i === 10 ? 'rgba(255,0,0,0.5)' : 'rgba(0,0,0,0.1)', // Center line stronger
-          }}
-        />
-      ))}
-      {/* Horizontal Lines */}
-      {Array.from({ length: horizontalLines }).map((_, i) => (
-        <View
-          key={`h-${i}`}
-          style={{
-            position: 'absolute',
-            top: i * gridSize,
-            left: 0,
-            right: 0,
-            height: 1,
-            backgroundColor: 'rgba(0,0,0,0.1)',
-          }}
-        />
-      ))}
-      {/* Center Horizontal Line (Screen Center) */}
-      <View
-        style={{
-          position: 'absolute',
-          top: height / 2,
-          left: 0,
-          right: 0,
-          height: 2,
-          backgroundColor: 'rgba(255,0,0,0.3)',
-        }}
-      />
-    </View>
-  );
-};
+// UI Components and helpers moved to separate files
 
 // Dynamic Import Wrapper for Callout
 let Callout;
@@ -148,7 +38,7 @@ if (Platform.OS !== 'web') {
 // import PMZoneMarker from '../components/PMZoneMarker'; // Removed
 // import { Heatmap } from 'react-native-maps'; // Moved to AirQualityScreen
 
-let client = null;
+
 
 const MapScreen = () => {
   const route = useRoute();
@@ -192,6 +82,7 @@ const MapScreen = () => {
   const [currentStopIndex, setCurrentStopIndex] = useState(0); // Track which stop the bus is nearest to
   const [simulationSpeed, setSimulationSpeed] = useState(20); // Simulation speed in m/s (default 20 = ~72km/h)
   const [currentStopName, setCurrentStopName] = useState(null); // Show stop name when bus arrives
+  const stopNameTimerRef = useRef(null);
 
   // Debug Location Override - allows testing anywhere by faking user position
   const [debugLocationEnabled, setDebugLocationEnabled] = useState(false);
@@ -626,7 +517,7 @@ const MapScreen = () => {
       return [...highlighted, ...others];
     }
     return visible;
-  }, [allStopMarkers /*, mapRegion */]);
+  }, [allStopMarkers, mapRegion]);
 
   // Merge fake bus into buses array for proximity detection
   // MOVED UP: To be available for incomingBuses calculation
@@ -791,7 +682,9 @@ const MapScreen = () => {
     } else {
       setMapLoadError(true); // Maps not available on web
     }
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Update waypoints when activeRoute changes (from navigation or bus tap)
@@ -836,7 +729,7 @@ const MapScreen = () => {
             lastCountRef.current = data.passengers;
             console.log("Passenger count updated:", data.passengers);
             setPersonCounts({ entering: data.passengers, exiting: 0 });
-            setBuses(prev => prev.map(b => ({ ...b, seats_occupied: data.passengers })));
+            // setBuses(...) REMOVED: setBuses is undefined in this scope and managed by DataContext
           }
         }
       } catch (err) {
@@ -847,7 +740,10 @@ const MapScreen = () => {
     fetchCount();
     // Poll every 15 seconds (reduced from 5s for performance)
     const interval = setInterval(fetchCount, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (stopNameTimerRef.current) clearTimeout(stopNameTimerRef.current);
+    };
   }, []);
 
   // Ensure ridingBus state stays fresh when server sends updates (e.g. seats, pm2.5)
@@ -1525,7 +1421,8 @@ const MapScreen = () => {
           lastShownStopRef.current = currentWaypoint.stopName;
           setCurrentStopName(currentWaypoint.stopName);
           // Auto-hide after 2 seconds
-          setTimeout(() => setCurrentStopName(null), 2000);
+          if (stopNameTimerRef.current) clearTimeout(stopNameTimerRef.current);
+          stopNameTimerRef.current = setTimeout(() => setCurrentStopName(null), 2000);
         }
       }
     });
@@ -1695,6 +1592,15 @@ const MapScreen = () => {
       }
     }
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAnimation();
+      if (regionDebounceRef.current) clearTimeout(regionDebounceRef.current);
+      if (stopNameTimerRef.current) clearTimeout(stopNameTimerRef.current);
+    };
+  }, []);
 
   // Show fallback if maps failed to load (missing API key, etc.)
   if (mapLoadError) {

@@ -23,6 +23,7 @@ export const DataProvider = ({ children }) => {
 
     // MQTT Client Ref
     const mqttClientRef = useRef(null);
+    const isMqttConnecting = useRef(false);
 
     // Initial Data Load
     useEffect(() => {
@@ -134,7 +135,6 @@ export const DataProvider = ({ children }) => {
                             } else {
                                 // API is fresher - merge but preserve existing values if API has null/0
                                 const getValidValue = (apiVal, existingVal) => {
-                                    // Keep existing if API value is null, undefined, or 0 (no GPS fix)
                                     if (apiVal === null || apiVal === undefined || apiVal === 0) {
                                         return existingVal;
                                     }
@@ -148,10 +148,8 @@ export const DataProvider = ({ children }) => {
                                     rssi: existing.rssi,
                                     isOnline: existing.isOnline,
                                     lastSignalUpdate: existing.lastSignalUpdate,
-                                    // Preserve location if API returns null/0
                                     current_lat: getValidValue(apiBus.current_lat, existing.current_lat),
                                     current_lon: getValidValue(apiBus.current_lon, existing.current_lon),
-                                    // Preserve sensor data if API returns null/0
                                     pm2_5: getValidValue(apiBus.pm2_5, existing.pm2_5),
                                     pm10: getValidValue(apiBus.pm10, existing.pm10),
                                     temp: getValidValue(apiBus.temp, existing.temp),
@@ -159,7 +157,7 @@ export const DataProvider = ({ children }) => {
                                     seats_available: getValidValue(apiBus.seats_available, existing.seats_available),
                                 };
                             }
-                        } else {
+                        } else if (mergedBuses.length < 50) { // SECURITY: Cap list size
                             mergedBuses.push({ ...apiBus, bus_name: finalName });
                         }
                     });
@@ -179,13 +177,27 @@ export const DataProvider = ({ children }) => {
             const mqttUrl = `ws://${host}:${MQTT_CONFIG.wsPort}`;
 
             // Prevent multiple connections
-            if (mqttClientRef.current?.connected) return;
+            if (mqttClientRef.current?.connected || isMqttConnecting.current) return;
 
             console.log('[DataContext] Connecting to MQTT...', mqttUrl);
-            const client = mqtt.connect(mqttUrl);
+            isMqttConnecting.current = true;
+            
+            // Cleanup existing client just in case
+            if (mqttClientRef.current) {
+                try {
+                    mqttClientRef.current.removeAllListeners();
+                    mqttClientRef.current.end(true);
+                } catch (e) {}
+            }
+
+            const client = mqtt.connect(mqttUrl, {
+                reconnectPeriod: 5000,
+                connectTimeout: 30 * 1000
+            });
             mqttClientRef.current = client;
 
             client.on('connect', () => {
+                isMqttConnecting.current = false;
                 console.log('[DataContext] Connected to MQTT Broker');
                 client.subscribe('sut/app/bus/location');
                 client.subscribe('sut/bus/gps/fast');
@@ -199,13 +211,22 @@ export const DataProvider = ({ children }) => {
                     const data = JSON.parse(message.toString());
                     handleMqttMessage(topic, data);
                 } catch (e) {
-                    console.log("[DataContext] MQTT Parse Error", e);
+                    // Silent parse error
                 }
             });
 
-            client.on('error', (err) => console.error('[DataContext] MQTT Error:', err));
+            client.on('error', (err) => {
+                isMqttConnecting.current = false;
+                console.error('[DataContext] MQTT Error:', err);
+            });
+            
+            client.on('offline', () => {
+                isMqttConnecting.current = false;
+                console.log('[DataContext] MQTT Offline');
+            });
 
         } catch (e) {
+            isMqttConnecting.current = false;
             console.error("[DataContext] MQTT Setup Error:", e);
         }
     };
@@ -234,7 +255,7 @@ export const DataProvider = ({ children }) => {
                         last_updated: Date.now() // Instant Wake up
                     };
                     return updated;
-                } else {
+                } else if (prevBuses.length < 50) { // SECURITY: Cap list size
                     return [...prevBuses, {
                         id: data.bus_mac,
                         bus_mac: data.bus_mac,
@@ -245,6 +266,7 @@ export const DataProvider = ({ children }) => {
                         last_updated: Date.now()
                     }];
                 }
+                return prevBuses;
             });
         }
         else if (topic === 'sut/bus/gps/fast') {

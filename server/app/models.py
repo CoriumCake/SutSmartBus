@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 from pydantic_core import core_schema
 
@@ -38,7 +38,7 @@ class Bus(MongoBaseModel):
     pm10: float = 0.0
     temp: float = 0.0
     hum: float = 0.0
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Stop(MongoBaseModel):
     name: str
@@ -53,20 +53,20 @@ class Route(MongoBaseModel):
 class Feedback(MongoBaseModel):
     name: str
     message: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class HardwareLocation(MongoBaseModel):
     lat: float
     lon: float
     pm2_5: float = 0.0
     pm10: float = 0.0
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     bus_mac: Optional[str] = "FAKE-PM-BUS"
 
 class BlockedMAC(MongoBaseModel):
     mac_address: str = Field(..., unique=True)
     reason: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class PMZone(MongoBaseModel):
     name: str = Field(...)
@@ -74,4 +74,4 @@ class PMZone(MongoBaseModel):
     avg_pm25: float = 0.0
     avg_pm10: float = 0.0
     last_updated: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -1,0 +1,198 @@
+import 'package:dio/dio.dart';
+import '../config/api_config.dart';
+import '../models/bus.dart';
+import '../models/route_model.dart';
+
+class ApiService {
+  late final Dio _dio;
+
+  ApiService() {
+    _dio = Dio(BaseOptions(
+      baseUrl: ApiConfig.baseUrl,
+      connectTimeout: const Duration(seconds: 5),
+      receiveTimeout: const Duration(seconds: 5),
+      headers: ApiConfig.headers,
+    ));
+  }
+
+  // ─── Buses ───────────────────────────────────────
+
+  Future<List<Bus>> fetchBuses() async {
+    try {
+      final response = await _dio.get('/api/buses');
+      if (response.data is List) {
+        return (response.data as List).map((j) => Bus.fromJson(j)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('[ApiService] Error fetching buses: $e');
+      return [];
+    }
+  }
+
+  Future<int?> fetchPassengerCount() async {
+    try {
+      // Server uses /api/passengers/latest which returns a list of latest counts per bus
+      final response = await _dio.get('/api/passengers/latest');
+      if (response.data is List && (response.data as List).isNotEmpty) {
+        // Return sum of all passengers or just the first one if specific logic is needed
+        int total = 0;
+        for (var item in response.data) {
+          total += (item['count'] as int? ?? 0);
+        }
+        return total;
+      }
+      return 0;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ─── Routes ──────────────────────────────────────
+
+  Future<List<BusRoute>> fetchRoutes() async {
+    try {
+      // 1. Fetch all routes
+      final routesRes = await _dio.get('/api/routes');
+      // 2. Fetch all stops (server doesn't have route-specific stops endpoint yet)
+      final stopsRes = await _dio.get('/api/stops');
+      
+      final allStops = (stopsRes.data as List?)?.map((s) => {
+        'latitude': s['lat'],
+        'longitude': s['lon'],
+        'stopName': s['name'],
+        'isStop': true,
+      }).toList() ?? [];
+
+      if (routesRes.data is List) {
+        return (routesRes.data as List).map((r) {
+          // In this server version, we might need to filter stops by route
+          // For now, we'll attach all stops or handle via mapping if available
+          return BusRoute.fromJson({
+            ...r as Map<String, dynamic>,
+            'waypoints': allStops, 
+          });
+        }).toList();
+      }
+      return [];
+    } catch (e) {
+      print('[ApiService] Error fetching routes: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchRouteList() async {
+    try {
+      // Server uses /api/bus-route-mapping for the list and metadata
+      final response = await _dio.get('/api/bus-route-mapping');
+      return List<Map<String, dynamic>>.from(response.data['routes'] ?? []);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<BusRoute?> fetchRoute(String routeId) async {
+    try {
+      // Server might not have direct route by ID if using static files
+      // But we can try the general routes list
+      final response = await _dio.get('/api/routes');
+      if (response.data is List) {
+        final routeJson = (response.data as List).firstWhere(
+          (r) => r['id'].toString() == routeId,
+          orElse: () => null,
+        );
+        if (routeJson != null) return BusRoute.fromJson(routeJson);
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Note: syncRoute and deleteRoute are not currently implemented on server routers
+  // but we keep the placeholders or point them to potential future admin routes.
+
+  // ─── Bus Management ──────────────────────────────
+
+  Future<bool> createBus(String mac, String name) async {
+    try {
+      await _dio.post('/api/buses', data: {
+        'mac_address': mac, 
+        'bus_name': name,
+        'current_lat': 0.0,
+        'current_lon': 0.0,
+        'seats_available': 0,
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> updateBus(String mac, String name) async {
+    try {
+      await _dio.put('/api/buses/$mac', data: {'bus_name': name});
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteBus(String mac) async {
+    try {
+      await _dio.delete('/api/buses/$mac');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ─── Bus Route Mapping ───────────────────────────
+
+  Future<Map<String, dynamic>?> fetchBusRouteMappings(int localVersion) async {
+    try {
+      final response = await _dio.get('/api/bus-route-mapping');
+      return response.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ─── Air Quality ─────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchHeatmapData({String timeRange = '1h'}) async {
+    try {
+      // Map '1h', '24h' etc to hours integer
+      int hours = 1;
+      if (timeRange.endsWith('h')) {
+        hours = int.tryParse(timeRange.replaceAll('h', '')) ?? 1;
+      } else if (timeRange.endsWith('d')) {
+        hours = (int.tryParse(timeRange.replaceAll('d', '')) ?? 1) * 24;
+      }
+
+      final response = await _dio.get('/api/analytics/heatmap', queryParameters: {'hours': hours});
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<void> sendFakeLocation(Map<String, dynamic> data) async {
+    try {
+      await _dio.post('/api/debug/location', data: data);
+    } catch (e) {
+      // Silent
+    }
+  }
+
+  Future<void> deleteFakeLocation(String busId) async {
+    try {
+      await _dio.delete('/api/debug/location/$busId');
+    } catch (e) {
+      // Silent
+    }
+  }
+}

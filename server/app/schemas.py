@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict, BeforeValidator
 from typing import List, Optional, Annotated, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 
 PyObjectId = Annotated[str, BeforeValidator(str)]
@@ -16,7 +16,7 @@ class BusBase(BaseModel):
     temp: float = 0.0
     hum: float = 0.0
     last_updated: Optional[datetime] = None
-    mac_address: Optional[str] = None # Added for consistency
+    mac_address: Optional[str] = None 
 
 class BusCreate(BusBase):
     id: int
@@ -41,11 +41,14 @@ class BusLocation(BaseModel):
     temp: Optional[float] = 0.0
     hum: Optional[float] = 0.0
 
+class RingRequest(BaseModel):
+    bus_mac: str = "ESP32-CAM-01"
+
 # --- Route Schemas ---
 class RouteBase(BaseModel):
     name: str
     description: Optional[str] = None
-    bus_id: Optional[str] = None # Linked Bus ID
+    bus_id: Optional[str] = None 
 
 class RouteCreate(RouteBase):
     id: int
@@ -56,6 +59,24 @@ class Route(RouteBase):
 
     class Config:
         from_attributes = True
+
+class RouteMapping(BaseModel):
+    bus_mac: str
+    bus_name: str
+    route_id: str
+    route_name: str
+
+class RouteDetail(BaseModel):
+    route_id: str
+    route_name: str
+    route_color: str
+    file: str
+
+class RouteData(BaseModel):
+    version: int
+    lastUpdated: str
+    mappings: List[RouteMapping]
+    routes: List[RouteDetail]
 
 # --- Stop Schemas ---
 class StopBase(BaseModel):
@@ -110,7 +131,6 @@ class PMZoneBase(BaseModel):
     points: List[List[float]] = []
 
 class PMZoneCreate(PMZoneBase):
-    # Allow creating providing lat/lon center + radius (for circular approximation)
     lat: Optional[float] = None
     lon: Optional[float] = None
     radius: Optional[float] = 50.0
@@ -123,3 +143,12 @@ class PMZone(PMZoneBase):
     created_at: datetime
     
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+class FirmwareUpdateResponse(BaseModel):
+    success: bool
+    message: str
+    target_mac: str
+    ota_url: str
+
+class AdminPasswordRequest(BaseModel):
+    password: str

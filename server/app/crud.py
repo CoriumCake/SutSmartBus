@@ -1,7 +1,7 @@
 from typing import List
 from bson import ObjectId
 from . import models, schemas
-from datetime import datetime
+from datetime import datetime, timezone
 from .database import db
 
 # Get collections
@@ -39,7 +39,7 @@ async def update_bus_location(mac_address: str, lat: float | None, lon: float | 
         "pm10": pm10,
         "temp": temp,
         "hum": hum,
-        "last_updated": datetime.utcnow()
+        "last_updated": datetime.now(timezone.utc)
     }
     
     # Only update location if valid coordinates are provided

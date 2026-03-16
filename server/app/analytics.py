@@ -3,7 +3,7 @@ Air Quality Analytics Module
 Provides endpoints for air quality data analysis and visualization.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from . import crud
 from .database import db
@@ -23,7 +23,7 @@ async def get_zone_heatmap_data(hours: int = 24, grid_size: float = 0.001, bus_m
     Returns:
         List of zone objects with lat, lon, avg_pm25, avg_pm10, count
     """
-    cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     
     match_stage = {
         "timestamp": {"$gte": cutoff_time},
@@ -110,7 +110,7 @@ async def get_time_series_data(hours: int = 24, interval_minutes: int = 60, bus_
     Returns:
         List of time-bucketed averages with timestamp, avg_pm25, avg_pm10
     """
-    cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     
     match_stage = {
         "timestamp": {"$gte": cutoff_time},
@@ -166,7 +166,7 @@ async def get_overall_stats(hours: int = 24, bus_mac: Optional[str] = None):
     """
     Get overall air quality statistics for the dashboard summary.
     """
-    cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     
     match_stage = {
         "timestamp": {"$gte": cutoff_time},
