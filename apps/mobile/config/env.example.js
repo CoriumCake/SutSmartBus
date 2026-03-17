@@ -51,9 +51,6 @@ export const ENV = {
     // Optional Settings
     // ===========================================
 
-    // Google Maps API Key (for web version)
-    GOOGLE_MAPS_API_KEY: '',
-
     // App timezone
     TIMEZONE: 'Asia/Bangkok',
 };

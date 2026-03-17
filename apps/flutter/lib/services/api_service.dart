@@ -109,8 +109,23 @@ class ApiService {
     }
   }
 
-  // Note: syncRoute and deleteRoute are not currently implemented on server routers
-  // but we keep the placeholders or point them to potential future admin routes.
+  Future<bool> syncRoute(BusRoute route) async {
+    try {
+      final response = await _dio.post('/api/routes', data: route.toJson());
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> deleteRoute(String routeId) async {
+    try {
+      await _dio.delete('/api/routes/$routeId');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 
   // ─── Bus Management ──────────────────────────────
 

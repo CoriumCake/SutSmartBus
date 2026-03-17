@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/bus.dart';
 import '../providers/data_provider.dart';
 import '../providers/theme_provider.dart';
 import '../utils/air_quality_utils.dart';
-import '../utils/map_styles.dart';
 
 class AirQualityMapWidget extends ConsumerStatefulWidget {
   final List<Bus> buses;
@@ -25,8 +25,8 @@ class AirQualityMapWidget extends ConsumerStatefulWidget {
 }
 
 class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
-  GoogleMapController? _mapController;
-  Set<Polygon> _polygons = {};
+  final MapController _mapController = MapController();
+  List<Polygon> _polygons = [];
   bool _loading = false;
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
@@ -72,9 +72,9 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
 
     // Add API data
     for (final point in rawData) {
-      final lat = point['lat'] as double?;
-      final lon = point['lon'] as double?;
-      final pm25 = point['pm2_5'] as double?;
+      final lat = point['latitude'] as double? ?? point['lat'] as double?;
+      final lon = point['longitude'] as double? ?? point['lon'] as double?;
+      final pm25 = point['weight'] as double? ?? point['pm2_5'] as double?;
       if (lat != null && lon != null && pm25 != null) {
         addPoint(lat, lon, pm25);
       }
@@ -87,7 +87,7 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
       }
     }
 
-    final newPolygons = <Polygon>{};
+    final newPolygons = <Polygon>[];
 
     grid.forEach((key, values) {
       final parts = key.split(',');
@@ -95,19 +95,19 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
       final lon = double.parse(parts[1]);
       final avgPm25 = values.reduce((a, b) => a + b) / values.length;
 
-      final color = getPMColor(avgPm25).withOpacity(0.4);
+      final color = getPMColor(avgPm25).withOpacity(0.5);
 
       newPolygons.add(
         Polygon(
-          polygonId: PolygonId(key),
           points: [
             LatLng(lat - _gridSize / 2, lon - _gridSize / 2),
             LatLng(lat + _gridSize / 2, lon - _gridSize / 2),
             LatLng(lat + _gridSize / 2, lon + _gridSize / 2),
             LatLng(lat - _gridSize / 2, lon + _gridSize / 2),
           ],
-          fillColor: color,
-          strokeWidth: 0,
+          color: color,
+          borderStrokeWidth: 0,
+          isFilled: true,
         ),
       );
     });
@@ -121,69 +121,76 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
 
     return Stack(
       children: [
-        GoogleMap(
-          initialCameraPosition: const CameraPosition(
-            target: _sutCenter,
-            zoom: 14.5,
+        FlutterMap(
+          mapController: _mapController,
+          options: const MapOptions(
+            initialCenter: _sutCenter,
+            initialZoom: 14.5,
           ),
-          onMapCreated: (controller) => _mapController = controller,
-          polygons: _polygons,
-          style: isDark ? darkMapStyleJson : null,
-          myLocationEnabled: true,
-          myLocationButtonEnabled: false,
+          children: [
+            TileLayer(
+              urlTemplate: isDark 
+                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+              subdomains: const ['a', 'b', 'c', 'd'],
+              userAgentPackageName: 'com.catcode.sut_smart_bus',
+            ),
+            PolygonLayer(polygons: _polygons),
+          ],
         ),
 
-        // Time filter buttons
+        // Modern filter selector
         Positioned(
-          top: 10,
-          right: 10,
-          child: Card(
+          top: 16,
+          right: 16,
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).cardColor.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(32),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+              ],
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildFilterButton('1h'),
-                _buildFilterButton('24h'),
+                _buildModernFilter('1h'),
+                _buildModernFilter('24h'),
               ],
             ),
           ),
         ),
 
         if (_loading)
-          const Positioned(
-            top: 20,
-            left: 20,
+          const Center(
             child: CircularProgressIndicator(),
           ),
       ],
     );
   }
 
-  Widget _buildFilterButton(String range) {
+  Widget _buildModernFilter(String range) {
     final isSelected = widget.timeRange == range;
     final theme = Theme.of(context);
 
-    return InkWell(
+    return GestureDetector(
       onTap: () => widget.onTimeRangeChanged(range),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? theme.colorScheme.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(28),
         ),
         child: Text(
           range,
           style: TextStyle(
             color: isSelected ? Colors.white : theme.textTheme.bodyMedium?.color,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
           ),
         ),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
   }
 }

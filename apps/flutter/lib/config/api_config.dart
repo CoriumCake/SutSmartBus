@@ -16,7 +16,10 @@ class ApiConfig {
 
   /// MQTT WebSocket URL
   static String get mqttWsUrl {
-    if (Env.isTunnelMode) return 'ws://${Env.mqttBrokerHost}:${Env.mqttWebSocketPort}';
+    if (Env.isTunnelMode) {
+      // Cloudflare Tunnels use SSL (wss://) on the public domain
+      return 'wss://${Env.mqttBrokerHost}:${Env.mqttWebSocketPort}';
+    }
 
     String host = Env.mqttBrokerHost.isEmpty ? Env.serverIp : Env.mqttBrokerHost;
     if (Platform.isAndroid && (host == 'localhost' || host == '127.0.0.1')) {

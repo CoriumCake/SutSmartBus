@@ -35,3 +35,19 @@ async def get_route_file(filename: str):
             return json.load(f)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading route file: {str(e)}")
+
+@router.post("/routes")
+async def create_route(route: schemas.RouteCreate):
+    """Saves or updates a route definition in the database."""
+    success = await crud.save_route(route)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save route")
+    return {"success": True, "message": "Route saved successfully"}
+
+@router.delete("/routes/{route_id}")
+async def delete_route(route_id: str):
+    """Deletes a route from the database."""
+    success = await crud.delete_route(route_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return {"success": True, "message": "Route deleted successfully"}

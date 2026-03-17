@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../providers/language_provider.dart';
 
 class AboutScreen extends ConsumerWidget {
   const AboutScreen({super.key});
@@ -9,111 +8,181 @@ class AboutScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final t = ref.watch(languageProvider).t;
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: Text(t('about'))),
+      appBar: AppBar(
+        title: const Text('About SUT Smart Bus'),
+      ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         children: [
-          // Logo
-          Center(child: Container(
-            width: 100, height: 100,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
-              borderRadius: BorderRadius.circular(24)),
-            child: const Icon(Icons.directions_bus, size: 48, color: Colors.white),
-          )),
-          const SizedBox(height: 16),
-          Center(child: Text('SUT Smart Bus',
-              style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold))),
-          Center(child: Text('${t("version")} 1.0.0',
-              style: theme.textTheme.bodySmall)),
-          const SizedBox(height: 24),
+          // Header / Logo
+          Center(
+            child: Column(
+              children: [
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary,
+                    borderRadius: BorderRadius.circular(28),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colorScheme.primary.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.directions_bus, size: 54, color: Colors.white),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'SUT Smart Bus',
+                  style: theme.textTheme.displayMedium,
+                ),
+                Text(
+                  'Version 1.2.0 (Build 105)',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 40),
 
-          // Description
+          // Description Card
+          _buildInfoCard(
+            theme,
+            'Description',
+            'SUT Smart Bus is an advanced transit and environmental monitoring platform for Suranaree University of Technology. It provides real-time bus tracking, PM2.5 air quality monitoring, and estimated arrival times for the campus community.',
+          ),
+
+          const SizedBox(height: 16),
+
+          // Features Card
           Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(t('appDescription'), style: theme.textTheme.bodyMedium),
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Core Features', style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 16),
+                  _buildFeatureRow(Icons.location_on, 'Real-time GPS Tracking', colorScheme.primary),
+                  _buildFeatureRow(Icons.eco, 'Live PM2.5 Monitoring', Colors.green),
+                  _buildFeatureRow(Icons.timer, 'Smart ETA Predictions', Colors.blue),
+                  _buildFeatureRow(Icons.map, 'Interactive Route Maps', Colors.purple),
+                  _buildFeatureRow(Icons.notifications_active, 'Arrival Notifications', Colors.orange),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Developer Card
+          _buildInfoCard(
+            theme,
+            'Development Team',
+            'Developed by the School of Computer Engineering, Suranaree University of Technology. Optimized for modern campus transit management.',
+          ),
+
+          const SizedBox(height: 16),
+
+          // Contact & Links
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Connect with us', style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 16),
+                  _buildLinkRow(theme, Icons.language, 'Official Website', 'https://www.sut.ac.th'),
+                  _buildLinkRow(theme, Icons.email, 'Technical Support', 'mailto:support@sut.ac.th'),
+                  _buildLinkRow(theme, Icons.code, 'Project Repository', 'https://github.com/SUT-Smart-Bus'),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 32),
+          Center(
+            child: Text(
+              '© 2026 Suranaree University of Technology',
+              style: theme.textTheme.bodySmall,
             ),
           ),
           const SizedBox(height: 16),
-
-          // Features
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(children: [
-                _featureRow(Icons.location_on, 'Real-time bus tracking', theme.colorScheme.primary),
-                _featureRow(Icons.eco, 'Air quality monitoring (PM2.5)', Colors.green),
-                _featureRow(Icons.notifications, 'Arrival notifications', Colors.amber),
-                _featureRow(Icons.map, 'Route visualization', Colors.purple),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Developer
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Development Team', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                const Text('Suranaree University of Technology'),
-                const Text('School of Computer Engineering'),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Contact
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Contact & Support', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                _linkRow(Icons.mail, 'support@sut.ac.th', 'mailto:support@sut.ac.th', theme),
-                _linkRow(Icons.language, 'www.sut.ac.th', 'https://www.sut.ac.th', theme),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          Center(child: Text('© 2024 Suranaree University of Technology',
-              style: theme.textTheme.bodySmall)),
         ],
       ),
     );
   }
 
-  Widget _featureRow(IconData icon, String text, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(children: [
-        Icon(icon, size: 20, color: color),
-        const SizedBox(width: 12),
-        Text(text),
-      ]),
+  Widget _buildInfoCard(ThemeData theme, String title, String content) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            Text(content, style: theme.textTheme.bodyLarge),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _linkRow(IconData icon, String label, String url, ThemeData theme) {
+  Widget _buildFeatureRow(IconData icon, String label, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: color),
+          ),
+          const SizedBox(width: 16),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLinkRow(ThemeData theme, IconData icon, String label, String url) {
     return InkWell(
-      onTap: () => launchUrl(Uri.parse(url)),
+      onTap: () async {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri);
+        }
+      },
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(children: [
-          Icon(icon, size: 20, color: theme.colorScheme.primary),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: theme.colorScheme.primary)),
-        ]),
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: theme.colorScheme.primary),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary.withOpacity(0.5)),
+          ],
+        ),
       ),
     );
   }

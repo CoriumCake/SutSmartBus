@@ -98,6 +98,27 @@ async def create_stop(stop: models.Stop):
     new_stop = await stop_collection.find_one({"_id": result.inserted_id})
     return new_stop
 
+async def save_route(route_data: schemas.RouteCreate):
+    """Upsert a route by its ID (from Flutter app)."""
+    route_dict = route_data.model_dump()
+    route_id = route_dict.get("route_id")
+    if not route_id:
+        return False
+    
+    # Map Flutter field names to MongoDB models if needed
+    # In this case, we use the raw dict but ensure ID is mapped
+    await route_collection.update_one(
+        {"id": route_id},
+        {"$set": route_dict},
+        upsert=True
+    )
+    return True
+
+async def delete_route(route_id: str):
+    """Delete a route by its ID."""
+    result = await route_collection.delete_one({"id": route_id})
+    return result.deleted_count > 0
+
 async def get_stops_for_route(route_id: str):
     route = await get_route(route_id)
     if route and "stops" in route:

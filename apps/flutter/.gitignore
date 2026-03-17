@@ -43,3 +43,18 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets, Keys, and Service Accounts
+*.jks
+*.p12
+*.keystore
+*.key
+*.pem
+google-services.json
+GoogleService-Info.plist
+
+# Local Environment
+.env*
+lib/config/env.dart
+!lib/config/env.dart.example
+dart_tool/

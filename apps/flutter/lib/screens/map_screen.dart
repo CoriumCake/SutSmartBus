@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../providers/data_provider.dart';
 import '../providers/theme_provider.dart';
@@ -9,7 +10,6 @@ import '../models/bus.dart';
 import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../utils/map_utils.dart';
-import '../utils/map_styles.dart';
 
 class IncomingBus {
   final Bus bus;
@@ -37,146 +37,126 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   Position? _userLocation;
   BusRoute? _activeRoute;
   Bus? _ridingBus;
   int _currentStopIndex = 0;
-  BitmapDescriptor? _busIcon;
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
-  static const _initialRegion = CameraPosition(
-    target: _sutCenter,
-    zoom: 15.5,
-  );
 
   @override
   void initState() {
     super.initState();
     _getUserLocation();
-    _loadBusIcon();
-  }
-
-  Future<void> _loadBusIcon() async {
-    _busIcon = await BitmapDescriptor.asset(
-      const ImageConfiguration(size: Size(48, 48)),
-      'assets/images/bus_icon.png',
-    );
-    if (mounted) setState(() {});
   }
 
   Future<void> _getUserLocation() async {
-    final permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      await Geolocator.requestPermission();
-    }
-
     try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
+      
       if (mounted) {
         setState(() => _userLocation = position);
-        _mapController?.animateCamera(CameraUpdate.newLatLng(
-          LatLng(position.latitude, position.longitude),
-        ));
+        _mapController.move(LatLng(position.latitude, position.longitude), 15.5);
       }
     } catch (e) {
-      // Ignore
+      debugPrint('Location error: $e');
     }
   }
 
-  Set<Marker> _buildBusMarkers(List<Bus> buses) {
+  List<Marker> _buildBusMarkers(List<Bus> buses) {
     return buses.where((b) => b.currentLat != null && b.currentLon != null).map((bus) {
+      final color = _parseColor(bus.routeId != null ? 
+          ref.read(routesProvider).firstWhere((r) => r.routeId == bus.routeId, 
+          orElse: () => BusRoute(routeId: '', routeName: '', waypoints: [])).routeColor : '#FF9800');
+
       return Marker(
-        markerId: MarkerId('bus_${bus.busMac}'),
-        position: LatLng(bus.currentLat!, bus.currentLon!),
-        icon: _busIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-        infoWindow: InfoWindow(
-          title: bus.busName,
-          snippet: 'PM2.5: ${bus.pm25?.toStringAsFixed(1) ?? "--"} | '
-              'Seats: ${bus.seatsAvailable ?? "--"}',
+        point: LatLng(bus.currentLat!, bus.currentLon!),
+        width: 80,
+        height: 40,
+        child: GestureDetector(
+          onTap: () => _onBusTap(bus),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4)),
+              ],
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.directions_bus, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    bus.busName.split('-').last,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        onTap: () => _onBusTap(bus),
       );
-    }).toSet();
+    }).toList();
   }
 
-  Set<Marker> _buildStopMarkers() {
-    if (_activeRoute == null) return {};
+  List<Marker> _buildStopMarkers() {
+    if (_activeRoute == null) return [];
 
-    final stops = _activeRoute!.stops;
-    return stops.asMap().entries.map((entry) {
+    return _activeRoute!.stops.asMap().entries.map((entry) {
       final i = entry.key;
       final stop = entry.value;
-      final isPassed = i < _currentStopIndex;
       final isNext = i == _currentStopIndex;
 
       return Marker(
-        markerId: MarkerId('stop_$i'),
-        position: LatLng(stop.latitude, stop.longitude),
-        icon: BitmapDescriptor.defaultMarkerWithHue(
-          isPassed ? BitmapDescriptor.hueRed
-              : isNext ? BitmapDescriptor.hueGreen
-              : BitmapDescriptor.hueAzure,
+        point: LatLng(stop.latitude, stop.longitude),
+        width: 12,
+        height: 12,
+        child: Container(
+          decoration: BoxDecoration(
+            color: isNext ? Colors.green : Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: _parseColor(_activeRoute!.routeColor), width: 2),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, spreadRadius: 1),
+            ],
+          ),
         ),
-        infoWindow: InfoWindow(title: stop.stopName ?? 'Stop ${i + 1}'),
       );
-    }).toSet();
+    }).toList();
   }
 
-  Set<Polyline> _buildRoutePolylines() {
-    if (_activeRoute == null) return {};
-
-    final waypoints = _activeRoute!.waypoints;
+  List<Polyline> _buildRoutePolylines() {
+    if (_activeRoute == null) return [];
     final color = _parseColor(_activeRoute!.routeColor);
-    final stopsWithIndices = waypoints
-        .asMap()
-        .entries
-        .where((e) => e.value.isStop && e.value.stopName != null)
-        .toList();
-
-    final currentStop = _currentStopIndex > 0 && _currentStopIndex <= stopsWithIndices.length
-        ? stopsWithIndices[_currentStopIndex - 1]
-        : null;
-    final currentWpIdx = currentStop?.key ?? 0;
-
-    final upcomingStopEntry = stopsWithIndices.length > _currentStopIndex + 2
-        ? stopsWithIndices[_currentStopIndex + 2]
-        : stopsWithIndices.isNotEmpty ? stopsWithIndices.last : null;
-    final upcomingWpIdx = upcomingStopEntry?.key ?? waypoints.length - 1;
-
-    final polylines = <Polyline>{};
-
-    if (currentWpIdx > 0) {
-      polylines.add(Polyline(
-        polylineId: const PolylineId('passed'),
-        points: waypoints.sublist(0, currentWpIdx + 1)
-            .map((w) => LatLng(w.latitude, w.longitude)).toList(),
-        color: color.withOpacity(0.3),
-        width: 4,
-      ));
-    }
-
-    polylines.add(Polyline(
-      polylineId: const PolylineId('upcoming'),
-      points: waypoints.sublist(currentWpIdx, upcomingWpIdx + 1)
-          .map((w) => LatLng(w.latitude, w.longitude)).toList(),
-      color: color,
-      width: 6,
-    ));
-
-    if (upcomingWpIdx < waypoints.length - 1) {
-      polylines.add(Polyline(
-        polylineId: const PolylineId('distant'),
-        points: waypoints.sublist(upcomingWpIdx)
-            .map((w) => LatLng(w.latitude, w.longitude)).toList(),
-        color: color.withOpacity(0.15),
-        width: 3,
-      ));
-    }
-
-    return polylines;
+    
+    return [
+      Polyline(
+        points: _activeRoute!.waypoints.map((w) => LatLng(w.latitude, w.longitude)).toList(),
+        color: color,
+        strokeWidth: 5,
+        borderStrokeWidth: 2,
+        borderColor: Colors.white.withOpacity(0.8),
+      ),
+    ];
   }
 
   Color _parseColor(String hex) {
@@ -196,63 +176,113 @@ class _MapScreenState extends ConsumerState<MapScreen> {
            _currentStopIndex = calculateBusStopIndex(route, LatLng(bus.currentLat!, bus.currentLon!));
         }
       });
+      _mapController.move(LatLng(bus.currentLat!, bus.currentLon!), 16.5);
     }
   }
 
   int calculateBusStopIndex(BusRoute route, LatLng busPosition) {
     final waypoints = route.waypoints;
     if (waypoints.length < 2) return 0;
-
     double minDistance = double.infinity;
     int closestSegmentIndex = 0;
-
     for (int i = 0; i < waypoints.length - 1; i++) {
       final segStart = waypoints[i];
       final segEnd = waypoints[i + 1];
-
       final dx = segEnd.latitude - segStart.latitude;
       final dy = segEnd.longitude - segStart.longitude;
       final lenSq = dx * dx + dy * dy;
       if (lenSq == 0) continue;
-
       final t = ((busPosition.latitude - segStart.latitude) * dx +
           (busPosition.longitude - segStart.longitude) * dy) / lenSq;
       final clampedT = t.clamp(0.0, 1.0);
-
       final projLat = segStart.latitude + clampedT * dx;
       final projLon = segStart.longitude + clampedT * dy;
-
       final dLat = busPosition.latitude - projLat;
       final dLon = busPosition.longitude - projLon;
       final dist = dLat * dLat + dLon * dLon;
-
       if (dist < minDistance) {
         minDistance = dist;
         closestSegmentIndex = i;
       }
     }
-
     int passedStops = 0;
     for (int i = 0; i <= closestSegmentIndex; i++) {
-      if (waypoints[i].isStop && waypoints[i].stopName != null) {
-        passedStops++;
-      }
+      if (waypoints[i].isStop && waypoints[i].stopName != null) passedStops++;
     }
     return passedStops;
   }
 
-  ({Waypoint stop, double distance})? findNearestStop(
-    LatLng userLocation,
-    List<Waypoint> allStops,
-  ) {
+  Widget _buildNearbyPanel(List<BusRoute> routes, List<Bus> buses) {
+    if (_userLocation == null) return const SizedBox.shrink();
+
+    final allStops = routes.expand((r) => r.stops).toList();
+    final nearest = findNearestStop(LatLng(_userLocation!.latitude, _userLocation!.longitude), allStops);
+
+    if (nearest == null || nearest.distance > 800) return const SizedBox.shrink();
+
+    final incoming = calculateIncomingBuses(nearest.stop, buses, routes);
+
+    return Positioned(
+      bottom: 24,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.location_on, color: Colors.blue, size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Text(nearest.stop.stopName ?? 'Nearby Stop', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18))),
+                Text('${(nearest.distance).round()}m', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+              ],
+            ),
+            const Divider(height: 24),
+            if (incoming.isEmpty)
+              const Text('No incoming buses.', style: TextStyle(color: Colors.grey))
+            else
+              ...incoming.take(2).map((b) => Padding(
+                padding: const EdgeInsets.only(bottom: 12.0),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: _parseColor(b.routeColor).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      child: Text(b.routeName, style: TextStyle(color: _parseColor(b.routeColor), fontWeight: FontWeight.bold, fontSize: 12)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(b.bus.busName, style: const TextStyle(fontWeight: FontWeight.w500))),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text('${b.etaMinutes} min', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                        Text('${b.stopsAway} stops', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
+                    ),
+                  ],
+                ),
+              )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  ({Waypoint stop, double distance})? findNearestStop(LatLng userLocation, List<Waypoint> allStops) {
     Waypoint? closest;
     double closestDist = double.infinity;
-
     for (final stop in allStops) {
-      final dist = getDistanceFromLatLonInM(
-        userLocation.latitude, userLocation.longitude,
-        stop.latitude, stop.longitude,
-      );
+      final dist = getDistanceFromLatLonInM(userLocation.latitude, userLocation.longitude, stop.latitude, stop.longitude);
       if (dist < closestDist) {
         closestDist = dist;
         closest = stop;
@@ -262,111 +292,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return (stop: closest, distance: closestDist);
   }
 
-  List<IncomingBus> calculateIncomingBuses(
-    Waypoint nearbyStop,
-    List<Bus> buses,
-    List<BusRoute> allRoutes,
-  ) {
+  List<IncomingBus> calculateIncomingBuses(Waypoint nearbyStop, List<Bus> buses, List<BusRoute> allRoutes) {
     const avgBusSpeedMs = 25 * 1000 / 3600;
     final incoming = <IncomingBus>[];
-
     for (final bus in buses) {
       if (bus.currentLat == null || bus.currentLon == null) continue;
-
       final route = allRoutes.where((r) => r.routeId == bus.routeId).firstOrNull;
       if (route == null) continue;
-
-      final stopIdx = route.waypoints.indexWhere(
-        (wp) => wp.isStop && wp.stopName == nearbyStop.stopName,
-      );
+      final stopIdx = route.waypoints.indexWhere((wp) => wp.isStop && wp.stopName == nearbyStop.stopName);
       if (stopIdx == -1) continue;
-
       int busSegmentIdx = 0;
       double minDist = double.infinity;
       for (int i = 0; i < route.waypoints.length - 1; i++) {
         final wp = route.waypoints[i];
-        final dist = getDistanceFromLatLonInM(
-          bus.currentLat!, bus.currentLon!, wp.latitude, wp.longitude,
-        );
+        final dist = getDistanceFromLatLonInM(bus.currentLat!, bus.currentLon!, wp.latitude, wp.longitude);
         if (dist < minDist) {
           minDist = dist;
           busSegmentIdx = i;
         }
       }
-
       if (busSegmentIdx >= stopIdx) continue;
-
       double routeDistance = 0;
       for (int i = busSegmentIdx; i < stopIdx; i++) {
-        routeDistance += getDistanceFromLatLonInM(
-          route.waypoints[i].latitude, route.waypoints[i].longitude,
-          route.waypoints[i + 1].latitude, route.waypoints[i + 1].longitude,
-        );
+        routeDistance += getDistanceFromLatLonInM(route.waypoints[i].latitude, route.waypoints[i].longitude, route.waypoints[i + 1].latitude, route.waypoints[i + 1].longitude);
       }
-
       final etaMinutes = (routeDistance / avgBusSpeedMs / 60).round().clamp(1, 999);
-      incoming.add(IncomingBus(
-        bus: bus,
-        routeName: route.routeName,
-        routeColor: route.routeColor,
-        distanceM: routeDistance.round(),
-        etaMinutes: etaMinutes,
-        stopsAway: stopIdx - busSegmentIdx,
-      ));
+      incoming.add(IncomingBus(bus: bus, routeName: route.routeName, routeColor: route.routeColor, distanceM: routeDistance.round(), etaMinutes: etaMinutes, stopsAway: stopIdx - busSegmentIdx));
     }
-
     incoming.sort((a, b) => a.etaMinutes.compareTo(b.etaMinutes));
     return incoming;
-  }
-
-  Widget _buildNearbyPanel(List<BusRoute> routes, List<Bus> buses) {
-    if (_userLocation == null) return const SizedBox.shrink();
-
-    final allStops = routes.expand((r) => r.stops).toList();
-    final nearest = findNearestStop(
-      LatLng(_userLocation!.latitude, _userLocation!.longitude),
-      allStops
-    );
-
-    if (nearest == null || nearest.distance > 500) return const SizedBox.shrink();
-
-    final incoming = calculateIncomingBuses(nearest.stop, buses, routes);
-
-    return Positioned(
-      bottom: 16,
-      left: 16,
-      right: 16,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Nearby: ${nearest.stop.stopName}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              if (incoming.isEmpty)
-                const Text('No incoming buses.')
-              else
-                ...incoming.take(3).map((b) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 12, height: 12,
-                        decoration: BoxDecoration(color: _parseColor(b.routeColor), shape: BoxShape.circle),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text('${b.routeName} (${b.bus.busName})')),
-                      Text('${b.etaMinutes} min', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                )),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -376,38 +330,57 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final isDark = ref.watch(themeProvider).isDark;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          GoogleMap(
-            initialCameraPosition: _initialRegion,
-            onMapCreated: (controller) => _mapController = controller,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            markers: {
-              ..._buildBusMarkers(buses),
-              ..._buildStopMarkers(),
-            },
-            polylines: _buildRoutePolylines(),
-            style: isDark ? darkMapStyleJson : null,
+          FlutterMap(
+            mapController: _mapController,
+            options: const MapOptions(initialCenter: _sutCenter, initialZoom: 15.5),
+            children: [
+              TileLayer(
+                urlTemplate: isDark 
+                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                  : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                subdomains: const ['a', 'b', 'c', 'd'],
+                userAgentPackageName: 'com.catcode.sut_smart_bus',
+              ),
+              PolylineLayer(polylines: _buildRoutePolylines()),
+              MarkerLayer(markers: [
+                if (_userLocation != null)
+                  Marker(
+                    point: LatLng(_userLocation!.latitude, _userLocation!.longitude),
+                    width: 40, height: 40,
+                    child: Container(
+                      decoration: BoxDecoration(color: Colors.blue.withOpacity(0.2), shape: BoxShape.circle),
+                      child: Center(
+                        child: Container(
+                          width: 14, height: 14,
+                          decoration: BoxDecoration(color: Colors.blue, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ..._buildStopMarkers(),
+                ..._buildBusMarkers(buses),
+              ]),
+            ],
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 16,
+            left: 16,
+            right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildModernActionBtn(Icons.menu, () => Scaffold.of(context).openDrawer()),
+                _buildModernActionBtn(Icons.refresh, () => ref.read(dataProvider.notifier).refreshBuses()),
+              ],
+            ),
           ),
           Positioned(
             right: 16,
-            bottom: 100,
-            child: Column(
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'locate',
-                  onPressed: _getUserLocation,
-                  child: const Icon(Icons.my_location),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'refresh',
-                  onPressed: () => ref.read(dataProvider.notifier).refreshBuses(),
-                  child: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
+            bottom: _userLocation != null ? 220 : 100,
+            child: _buildModernActionBtn(Icons.my_location, _getUserLocation),
           ),
           _buildNearbyPanel(routes, buses),
         ],
@@ -415,9 +388,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _mapController?.dispose();
-    super.dispose();
+  Widget _buildModernActionBtn(IconData icon, VoidCallback onTap) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor.withOpacity(0.9),
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Padding(padding: const EdgeInsets.all(12), child: Icon(icon, size: 24)),
+        ),
+      ),
+    );
   }
 }

@@ -1,128 +1,129 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Custom color extensions for app-specific colors not in ThemeData
-class AppColors extends ThemeExtension<AppColors> {
-  final Color surface;
-  final Color textMuted;
-  final Color primaryLight;
-  final Color tabBarBorder;
+/// A modern, highly structured theme for SUT Smart Bus.
+/// Focuses on readability, high contrast, and a professional look.
+class AppTheme {
+  // Brand Colors
+  static const Color sutOrange = Color(0xFFF57C00);
+  static const Color sutBlue = Color(0xFF1976D2);
+  
+  // Neutral Colors - Light
+  static const Color lightBg = Color(0xFFF8F9FA);
+  static const Color lightSurface = Colors.white;
+  static const Color lightTextPrimary = Color(0xFF1A1C1E);
+  static const Color lightTextSecondary = Color(0xFF42474E);
 
-  AppColors({
-    required this.surface,
-    required this.textMuted,
-    required this.primaryLight,
-    required this.tabBarBorder,
-  });
+  // Neutral Colors - Dark
+  static const Color darkBg = Color(0xFF0F1113);
+  static const Color darkSurface = Color(0xFF1A1C1E);
+  static const Color darkTextPrimary = Color(0xFFE2E2E6);
+  static const Color darkTextSecondary = Color(0xFFC2C7CF);
 
-  @override
-  AppColors copyWith({
-    Color? surface,
-    Color? textMuted,
-    Color? primaryLight,
-    Color? tabBarBorder,
-  }) {
-    return AppColors(
-      surface: surface ?? this.surface,
-      textMuted: textMuted ?? this.textMuted,
-      primaryLight: primaryLight ?? this.primaryLight,
-      tabBarBorder: tabBarBorder ?? this.tabBarBorder,
+  static ThemeData get light {
+    final base = ThemeData.light(useMaterial3: true);
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: sutOrange,
+        primary: sutOrange,
+        onPrimary: Colors.white,
+        secondary: sutBlue,
+        surface: lightSurface,
+        background: lightBg,
+        error: const Color(0xFFBA1A1A),
+      ),
+      scaffoldBackgroundColor: lightBg,
+      textTheme: _buildTextTheme(base.textTheme, lightTextPrimary, lightTextSecondary),
+      cardTheme: _buildCardTheme(lightSurface),
+      appBarTheme: _buildAppBarTheme(lightSurface, lightTextPrimary),
+      elevatedButtonTheme: _buildButtonTheme(),
+      dividerTheme: const DividerThemeData(color: Color(0xFFDEE2E6), thickness: 1),
     );
   }
 
-  @override
-  AppColors lerp(ThemeExtension<AppColors>? other, double t) {
-    if (other is! AppColors) return this;
-    return AppColors(
-      surface: Color.lerp(surface, other.surface, t)!,
-      textMuted: Color.lerp(textMuted, other.textMuted, t)!,
-      primaryLight: Color.lerp(primaryLight, other.primaryLight, t)!,
-      tabBarBorder: Color.lerp(tabBarBorder, other.tabBarBorder, t)!,
+  static ThemeData get dark {
+    final base = ThemeData.dark(useMaterial3: true);
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: sutOrange,
+        brightness: Brightness.dark,
+        primary: sutOrange,
+        onPrimary: Colors.black,
+        secondary: const Color(0xFF90CAF9),
+        surface: darkSurface,
+        background: darkBg,
+      ),
+      scaffoldBackgroundColor: darkBg,
+      textTheme: _buildTextTheme(base.textTheme, darkTextPrimary, darkTextSecondary),
+      cardTheme: _buildCardTheme(darkSurface),
+      appBarTheme: _buildAppBarTheme(darkBg, darkTextPrimary),
+      elevatedButtonTheme: _buildButtonTheme(),
+      dividerTheme: const DividerThemeData(color: Color(0xFF44474E), thickness: 1),
+    );
+  }
+
+  static TextTheme _buildTextTheme(TextTheme base, Color primary, Color secondary) {
+    return GoogleFonts.plusJakartaSansTextTheme(base).copyWith(
+      displayLarge: GoogleFonts.plusJakartaSans(
+        fontSize: 32, fontWeight: FontWeight.w800, color: primary, letterSpacing: -0.5,
+      ),
+      displayMedium: GoogleFonts.plusJakartaSans(
+        fontSize: 28, fontWeight: FontWeight.w800, color: primary, letterSpacing: -0.5,
+      ),
+      titleLarge: GoogleFonts.plusJakartaSans(
+        fontSize: 20, fontWeight: FontWeight.w700, color: primary,
+      ),
+      titleMedium: GoogleFonts.plusJakartaSans(
+        fontSize: 16, fontWeight: FontWeight.w600, color: primary,
+      ),
+      bodyLarge: GoogleFonts.plusJakartaSans(
+        fontSize: 16, fontWeight: FontWeight.w500, color: primary, height: 1.5,
+      ),
+      bodyMedium: GoogleFonts.plusJakartaSans(
+        fontSize: 14, fontWeight: FontWeight.w500, color: secondary, height: 1.5,
+      ),
+      labelLarge: GoogleFonts.plusJakartaSans(
+        fontSize: 14, fontWeight: FontWeight.w700, color: sutOrange,
+      ),
+    );
+  }
+
+  static CardThemeData _buildCardTheme(Color color) {
+    return CardThemeData(
+      color: color,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: sutOrange.withOpacity(0.1), width: 1),
+      ),
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+    );
+  }
+
+  static AppBarTheme _buildAppBarTheme(Color bg, Color text) {
+    return AppBarTheme(
+      backgroundColor: bg,
+      foregroundColor: text,
+      elevation: 0,
+      centerTitle: false,
+      titleTextStyle: GoogleFonts.plusJakartaSans(
+        fontSize: 20, fontWeight: FontWeight.w800, color: text,
+      ),
+    );
+  }
+
+  static ElevatedButtonThemeData _buildButtonTheme() {
+    return ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      ),
     );
   }
 }
 
-/// Light theme colors
-const _lightPrimary = Color(0xFFF57C00);   // SUT Orange
-const _lightOnPrimary = Colors.white;
-
-/// Dark theme colors
-const _darkPrimary = Color(0xFFFFB74D);    // Lighter orange for dark mode
-
-/// Build the light ThemeData
-final ThemeData lightThemeData = ThemeData(
-  useMaterial3: true,
-  brightness: Brightness.light,
-  colorScheme: const ColorScheme.light(
-    primary: _lightPrimary,
-    onPrimary: _lightOnPrimary,
-    surface: Color(0xFFFFFFFF),
-    onSurface: Color(0xFF333333),
-    secondary: _lightPrimary,
-    outline: Color(0xFFEEEEEE),
-  ),
-  scaffoldBackgroundColor: const Color(0xFFFFFFFF),
-  cardColor: const Color(0xFFFFFFFF),
-  textTheme: GoogleFonts.interTextTheme().apply(
-    bodyColor: const Color(0xFF333333),
-    displayColor: const Color(0xFF333333),
-  ),
-  appBarTheme: const AppBarTheme(
-    backgroundColor: Colors.white,
-    foregroundColor: Color(0xFF333333),
-    elevation: 0,
-  ),
-  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-    backgroundColor: Colors.white,
-    selectedItemColor: _lightPrimary,
-    unselectedItemColor: Color(0xFF999999),
-  ),
-  dividerColor: const Color(0xFFEEEEEE),
-  extensions: [
-    AppColors(
-      surface: const Color(0xFFF5F5F5),
-      textMuted: const Color(0xFF999999),
-      primaryLight: const Color(0xFFFFF3E0),
-      tabBarBorder: const Color(0xFFEEEEEE),
-    ),
-  ],
-);
-
-/// Build the dark ThemeData
-final ThemeData darkThemeData = ThemeData(
-  useMaterial3: true,
-  brightness: Brightness.dark,
-  colorScheme: const ColorScheme.dark(
-    primary: _darkPrimary,
-    onPrimary: Colors.black,
-    surface: Color(0xFF121212),
-    onSurface: Color(0xFFFFFFFF),
-    secondary: _darkPrimary,
-    outline: Color(0xFF333333),
-  ),
-  scaffoldBackgroundColor: const Color(0xFF121212),
-  cardColor: const Color(0xFF252525),
-  textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).apply(
-    bodyColor: Colors.white,
-    displayColor: Colors.white,
-  ),
-  appBarTheme: const AppBarTheme(
-    backgroundColor: Color(0xFF1E1E1E),
-    foregroundColor: Colors.white,
-    elevation: 0,
-  ),
-  bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-    backgroundColor: Color(0xFF1E1E1E),
-    selectedItemColor: _darkPrimary,
-    unselectedItemColor: Color(0xFF707070),
-  ),
-  dividerColor: const Color(0xFF333333),
-  extensions: [
-    AppColors(
-      surface: const Color(0xFF1E1E1E),
-      textMuted: const Color(0xFF707070),
-      primaryLight: const Color(0xFF3D2A1A),
-      tabBarBorder: const Color(0xFF333333),
-    ),
-  ],
-);
+// Keep backward compatibility for SutSmartBusApp class
+final ThemeData lightThemeData = AppTheme.light;
+final ThemeData darkThemeData = AppTheme.dark;

@@ -50,8 +50,17 @@ class RouteBase(BaseModel):
     description: Optional[str] = None
     bus_id: Optional[str] = None 
 
-class RouteCreate(RouteBase):
-    id: int
+class Waypoint(BaseModel):
+    latitude: float
+    longitude: float
+    isStop: bool = False
+    stopName: Optional[str] = None
+
+class RouteCreate(BaseModel):
+    route_id: str
+    routeName: str
+    routeColor: str
+    waypoints: List[Waypoint]
 
 class Route(RouteBase):
     id: int
