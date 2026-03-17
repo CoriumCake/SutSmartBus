@@ -1,11 +1,23 @@
 #include "esp_camera.h"
 #include <WiFi.h>
-#include <PubSubClient.h>
+#include <WiFiClientSecure.h> // For WSS
+#include <PsychicMqttClient.h>
 #include <HTTPUpdate.h>  // For HTTP-based OTA updates
 #include <WebServer.h> // Add WebServer include
 #include <Preferences.h> // INTERNAL STORAGE
 #include "time.h"
 #include "config.h"  // ⚠️ Create from config.h.example with your credentials
+
+// Baltimore CyberTrust Root CA for Cloudflare WSS connections
+const char* BALTIMORE_CYBERTRUST_ROOT_CA = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIDzTCCArWgAwIBAgIQCjeHZF5ftIwiTv0b7RQMPDANBgkqhkiG9w0BAQsFADBa
+MQswCQYDVQQGEwJJRTESMBAGA1UEChMJQmFsdGltb3JlMRMwEQYDVQQLEwpDeWJl
+clRydXN0MSIwIAYgA1UEAxMZQmFsdGltb3JlIEN5YmVyVHJ1c3QgUm9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKMEyE0lTz+g/SJXQ7vTQ1unBuCJN0yJV0ReFEQPaA1IwQvZW+cwdFD1
+9Ae8zFnWSfda9J1CZMRJCQUzym+5iPDuI9yP+kHyCREU3qzuWFloUwOxkgAyXVjB
+YdwRVKD05WdRerw6DEdfgkfCv4+3ao8XnTSrLE=
+-----END CERTIFICATE-----
+)EOF";
 
 // OTA update state
 bool otaPending = false;
@@ -78,8 +90,8 @@ bool wifiConnecting = false;
 // Internal Storage (Preferences)
 Preferences preferences;
 
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
+WiFiClientSecure espClient; // Use WiFiClientSecure for WSS
+PsychicMqttClient mqttClient;
 int passengerCount = 0;
 int state = 0;  // 0=none, 1=left, 2=right
 unsigned long lastCountTime = 0;
@@ -695,22 +707,34 @@ void reconnectMQTT() {
   if (millis() - lastMqttAttempt < 10000) return;
   lastMqttAttempt = millis();
   
+  if (mqttClient.connected()) {
+    return;
+  }
+
   // Skip empty hosts
   while (strlen(mqttServers[currentMqttIndex].host) == 0) {
     currentMqttIndex = (currentMqttIndex + 1) % mqttServerCount;
   }
+
+  const char* mqttHost = mqttServers[currentMqttIndex].host;
+  int mqttPort = mqttServers[currentMqttIndex].port;
   
-  Serial.printf("🔌 MQTT trying %d/%d: %s:%d\n", 
+  Serial.printf("🔌 MQTT trying %d/%d: %s:%d (WSS)\n", 
                 currentMqttIndex + 1, mqttServerCount,
-                mqttServers[currentMqttIndex].host, 
-                mqttServers[currentMqttIndex].port);
-  
-  mqttClient.setServer(mqttServers[currentMqttIndex].host, 
-                       mqttServers[currentMqttIndex].port);
-  mqttClient.setCallback(mqttCallback);  // Set callback for incoming messages
-  
-  if (mqttClient.connect("BusCamStable")) {
-    Serial.println("✅ MQTT Connected");
+                mqttHost, mqttPort);
+
+  // Set up SSL Root CA for Cloudflare
+  espClient.setCACert(BALTIMORE_CYBERTRUST_ROOT_CA);
+
+  // Configure PsychicMqttClient for WebSockets
+  mqttClient.setServer(mqttHost, mqttPort);
+  mqttClient.setClient(&espClient);
+  mqttClient.setWebSocketPath("/mqtt"); // Standard WebSocket path for MQTT
+  mqttClient.setClientId(MQTT_CLIENT_ID);
+  mqttClient.onMessage(mqttCallback); // Set callback for incoming messages
+
+  if (mqttClient.connect()) {
+    Serial.println("✅ MQTT Connected (WSS)");
     // Subscribe to ring command topic
     mqttClient.subscribe(MQTT_TOPIC_RING);
     mqttClient.subscribe("sut/bus/+/ring");  // Also listen for bus-specific ring
@@ -723,7 +747,7 @@ void reconnectMQTT() {
     Serial.printf("📌 Current firmware version: %s\n", FIRMWARE_VERSION);
     #endif
   } else {
-    Serial.println("❌ MQTT Failed, trying next server");
+    Serial.printf("❌ MQTT Failed, trying next server. Error: %d\n", mqttClient.state());
     currentMqttIndex = (currentMqttIndex + 1) % mqttServerCount;
   }
 }
