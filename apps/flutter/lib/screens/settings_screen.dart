@@ -62,7 +62,7 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           // ─── Debug Mode ─────────────────────────
-          if (debugState.isDevMachine)
+          if (debugState.isDevMachine) ...[
             _sectionCard(theme, icon: Icons.bug_report, title: t('debugMode'),
               trailing: Switch(
                 value: debugState.debugMode,
@@ -70,6 +70,11 @@ class SettingsScreen extends ConsumerWidget {
                 activeColor: Colors.red,
               ),
             ),
+            _sectionCard(theme, icon: Icons.build, title: 'Testing & Debug Tools',
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/testing'),
+            ),
+          ],
 
           const SizedBox(height: 20),
 

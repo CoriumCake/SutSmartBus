@@ -13,6 +13,7 @@ import 'screens/bus_route_admin_screen.dart';
 import 'screens/bus_management_screen.dart';
 import 'screens/air_quality_dashboard_screen.dart';
 import 'screens/about_screen.dart';
+import 'screens/testing_screen.dart';
 
 // Navigation keys for each tab branch
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -90,6 +91,12 @@ final goRouter = GoRouter(
       name: 'about',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const AboutScreen(),
+    ),
+    GoRoute(
+      path: '/testing',
+      name: 'testing',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const TestingScreen(),
     ),
   ],
 );

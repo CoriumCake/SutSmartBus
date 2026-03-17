@@ -128,6 +128,25 @@ class DataNotifier extends StateNotifier<DataState> {
       _handleFastGpsUpdate(data);
     } else if (topic.contains('/status')) {
       _handleStatusUpdate(topic, data);
+    } else if (topic == 'bus/door/count') {
+      _handleDoorCountUpdate(data);
+    }
+  }
+
+  void _handleDoorCountUpdate(Map<String, dynamic> data) {
+    final busMac = data['bus_mac'] as String?;
+    final count = data['count'] as int?; // Assuming 'count' field in payload
+    if (busMac == null || count == null) return;
+
+    final buses = [...state.buses];
+    final idx = buses.indexWhere((b) => b.busMac == busMac);
+
+    if (idx >= 0) {
+      buses[idx] = buses[idx].copyWith(
+        seatsAvailable: count,
+        lastUpdated: DateTime.now().millisecondsSinceEpoch,
+      );
+      state = state.copyWith(buses: buses);
     }
   }
 

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import '../services/bus_service.dart';
 import '../providers/data_provider.dart';
 import '../providers/theme_provider.dart';
 import '../models/bus.dart';
@@ -42,6 +43,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   BusRoute? _activeRoute;
   Bus? _ridingBus;
   int _currentStopIndex = 0;
+  final BusService _busService = BusService();
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
 
@@ -168,16 +170,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _onBusTap(Bus bus) {
     final routes = ref.read(routesProvider);
     final route = routes.where((r) => r.routeId == bus.routeId).firstOrNull;
-    if (route != null) {
-      setState(() {
-        _activeRoute = route;
-        _ridingBus = bus;
-        if (bus.currentLat != null && bus.currentLon != null) {
-           _currentStopIndex = calculateBusStopIndex(route, LatLng(bus.currentLat!, bus.currentLon!));
-        }
-      });
-      _mapController.move(LatLng(bus.currentLat!, bus.currentLon!), 16.5);
-    }
+<<<<<<< Updated upstream
+    setState(() {
+      _activeRoute = route;
+      _ridingBus = bus;
+      if (bus.currentLat != null && bus.currentLon != null && route != null) {
+        _currentStopIndex = calculateBusStopIndex(route, LatLng(bus.currentLat!, bus.currentLon!));
+      }
+    });
+    _mapController.move(LatLng(bus.currentLat!, bus.currentLon!), 16.5);
+
+    // Show bottom sheet with bus details
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => _BusDetailsBottomSheet(
+        bus: bus,
+        busRoute: route,
+        onRingBell: (mac) async {
+          try {
+            await _busService.ringBell(mac);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Ring signal sent!')),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to send ring: ${e.toString()}')),
+              );
+            }
+          }
+        },
+      ),
+    );
   }
 
   int calculateBusStopIndex(BusRoute route, LatLng busPosition) {
@@ -189,7 +215,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final segStart = waypoints[i];
       final segEnd = waypoints[i + 1];
       final dx = segEnd.latitude - segStart.latitude;
-      final dy = segEnd.longitude - segStart.longitude;
+      final dy = segEnd.longitude - segStart.longitude; // Corrected line
       final lenSq = dx * dx + dy * dy;
       if (lenSq == 0) continue;
       final t = ((busPosition.latitude - segStart.latitude) * dx +
@@ -401,6 +427,54 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: Padding(padding: const EdgeInsets.all(12), child: Icon(icon, size: 24)),
+        ),
+      ),
+    );
+  }
+}
+
+class _BusDetailsBottomSheet extends StatelessWidget {
+  final Bus bus;
+  final BusRoute? busRoute;
+  final Function(String) onRingBell;
+
+  const _BusDetailsBottomSheet({
+    required this.bus,
+    this.busRoute,
+    required this.onRingBell,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              bus.busName,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            if (busRoute != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Text('Route: ${busRoute!.routeName}'),
+              ),
+            Text('PM2.5: ${bus.pm25?.toStringAsFixed(1) ?? "--"}'),
+            Text('Seats Available: ${bus.seatsAvailable ?? "--"}'),
+            Text('Last Updated: ${DateTime.fromMillisecondsSinceEpoch(bus.lastUpdated).toLocal().toString().split('.')[0]}'),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                onRingBell(bus.busMac);
+                Navigator.pop(context); // Dismiss bottom sheet after action
+              },
+              icon: const Icon(Icons.notifications_active),
+              label: const Text('Ring Driver'),
+            ),
+          ],
         ),
       ),
     );

@@ -17,6 +17,7 @@ class MqttService {
     'sut/bus/gps/fast',
     'sut/bus/gps',
     'sut/person-detection',
+    'bus/door/count',
     'sut/bus/+/status',
   ];
 
