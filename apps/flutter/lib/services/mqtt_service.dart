@@ -35,9 +35,17 @@ class MqttService {
       final uri = Uri.parse(wsUrl);
       final clientIdentifier = 'sut_smart_bus_flutter_${DateTime.now().millisecondsSinceEpoch}';
 
-      // For Mobile/Desktop, use MqttServerClient with WebSocket enabled
-      final client = MqttServerClient.withPort(uri.host, clientIdentifier, uri.port);
+      // For Mobile/Desktop, use MqttServerClient. If useWebSocket is true, 
+      // the first argument should contain the scheme (ws:// or wss://).
+      final client = MqttServerClient.withPort(wsUrl, clientIdentifier, uri.port);
       client.useWebSocket = true;
+
+      // Enable SSL if using wss
+      if (uri.scheme == 'wss') {
+        client.secure = true;
+        // Allow all certificates if needed for development
+        client.onBadCertificate = (dynamic cert) => true;
+      }
       
       _client = client
         ..keepAlivePeriod = 30

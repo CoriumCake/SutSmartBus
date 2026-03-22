@@ -170,7 +170,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   void _onBusTap(Bus bus) {
     final routes = ref.read(routesProvider);
     final route = routes.where((r) => r.routeId == bus.routeId).firstOrNull;
-<<<<<<< Updated upstream
     setState(() {
       _activeRoute = route;
       _ridingBus = bus;
@@ -369,6 +368,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'com.catcode.sut_smart_bus',
+                retinaMode: RetinaMode.isHighDensity(context),
               ),
               PolylineLayer(polylines: _buildRoutePolylines()),
               MarkerLayer(markers: [

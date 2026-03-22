@@ -73,11 +73,44 @@ const int mqttServerCount = sizeof(mqttServers) / sizeof(mqttServers[0]);
 int currentMqttIndex = 0;
 const char* mqtt_topic = MQTT_TOPIC_DETECTION;
 
-// fixed settings
-const int LEFT_ZONE = 70;   // wider left tolerance (QQVGA 160x120 scale)
-const int RIGHT_ZONE = 90;  // wider right tolerance
-const int MOTION_THRESHOLD = 25; // Adjusted for smaller resolution
-const unsigned long COOLDOWN_MS = 2000;  // 2s between counts
+// Tuning settings (loaded from preferences)
+int LEFT_ZONE = 70;   
+int RIGHT_ZONE = 90;  
+int MOTION_THRESHOLD = 25; 
+unsigned long COOLDOWN_MS = 2000;
+int PIXEL_DARK_THRESHOLD = 90;
+int DARK_PIXELS_THRESHOLD = 300;
+int PIXEL_MOTION_THRESHOLD = 25;
+bool INVERT_DIRECTION = false;
+int ACTIVE_PROFILE = 0; // 0=Day, 1=Night
+
+// Internal Storage (Preferences)
+Preferences preferences;
+
+void loadProfile(int profile) {
+  String p = String(profile);
+  PIXEL_DARK_THRESHOLD = preferences.getInt(("pdt"+p).c_str(), profile == 0 ? 90 : 50);
+  DARK_PIXELS_THRESHOLD = preferences.getInt(("dpt"+p).c_str(), profile == 0 ? 300 : 80);
+  PIXEL_MOTION_THRESHOLD = preferences.getInt(("pmt"+p).c_str(), profile == 0 ? 25 : 40);
+  MOTION_THRESHOLD = preferences.getInt(("mt"+p).c_str(), profile == 0 ? 25 : 60);
+  LEFT_ZONE = preferences.getInt(("lz"+p).c_str(), 70);
+  RIGHT_ZONE = preferences.getInt(("rz"+p).c_str(), 90);
+  COOLDOWN_MS = preferences.getInt(("cd"+p).c_str(), 2000);
+  INVERT_DIRECTION = preferences.getBool(("inv"+p).c_str(), false);
+}
+
+void saveProfile(int profile) {
+  String p = String(profile);
+  preferences.putInt(("pdt"+p).c_str(), PIXEL_DARK_THRESHOLD);
+  preferences.putInt(("dpt"+p).c_str(), DARK_PIXELS_THRESHOLD);
+  preferences.putInt(("pmt"+p).c_str(), PIXEL_MOTION_THRESHOLD);
+  preferences.putInt(("mt"+p).c_str(), MOTION_THRESHOLD);
+  preferences.putInt(("lz"+p).c_str(), LEFT_ZONE);
+  preferences.putInt(("rz"+p).c_str(), RIGHT_ZONE);
+  preferences.putInt(("cd"+p).c_str(), COOLDOWN_MS);
+  preferences.putBool(("inv"+p).c_str(), INVERT_DIRECTION);
+  preferences.putInt("prof", ACTIVE_PROFILE);
+}
 
 // WiFi connection settings (non-blocking)
 bool wifiConnected = false;
@@ -86,9 +119,6 @@ const unsigned long WIFI_RETRY_INTERVAL = 10000;  // 1 minute
 const unsigned long WIFI_CONNECT_TIMEOUT = 4000;  // 4s per network (non-blocking)
 unsigned long wifiConnectStart = 0;
 bool wifiConnecting = false;
-
-// Internal Storage (Preferences)
-Preferences preferences;
 
 WiFiClientSecure espClient; // Use WiFiClientSecure for WSS
 PsychicMqttClient mqttClient;
@@ -100,18 +130,135 @@ uint8_t roiPrev[4800] = {0}; // 160 width * 30 height
 WebServer server(80);
 
 void handleRoot() {
-  String html = "<html><head><title>SUT Bus Camera</title>";
+  String html = "<html><head><title>SUT Bus Camera Calibration</title>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<style>body{font-family:Arial;text-align:center;margin:0;padding:20px;background:#222;color:#eee;}";
   html += "img{width:95%;max-width:800px;height:auto;border:2px solid #fff;image-rendering:pixelated;image-rendering:-moz-crisp-edges;}";
-  html += "button{padding:10px 20px;font-size:16px;cursor:pointer;background:#007bff;color:white;border:none;border-radius:5px;}";
-  html += "</style></head><body>";
+  html += "button{padding:10px 20px;font-size:16px;cursor:pointer;background:#007bff;color:white;border:none;border-radius:5px;margin-top:10px;width:100%;max-width:400px;}";
+  html += ".control-group{margin: 10px auto; max-width: 400px; text-align: left; background: #333; padding: 15px; border-radius: 8px;}";
+  html += "label{display:block; margin-bottom: 5px; font-weight: bold;}";
+  html += "input[type=range]{width: 100%;}";
+  html += ".val{float: right; color: #00ffcc;}";
+  html += "</style>";
+  html += "<script>";
+  html += "function updateVal(id, val) { document.getElementById(id+'_val').innerText = val; }";
+  html += "var saveTimer;";
+  html += "function saveConfig() {";
+  html += "  clearTimeout(saveTimer);";
+  html += "  saveTimer = setTimeout(function() {";
+  html += "    var pdt = document.getElementById('pdt').value;";
+  html += "    var dpt = document.getElementById('dpt').value;";
+  html += "    var mt = document.getElementById('mt').value;";
+  html += "    var pmt = document.getElementById('pmt').value;";
+  html += "    var lz = document.getElementById('lz').value;";
+  html += "    var rz = document.getElementById('rz').value;";
+  html += "    var cd = document.getElementById('cd').value;";
+  html += "    var inv = document.getElementById('inv').checked ? 1 : 0;";
+  html += "    var xhr = new XMLHttpRequest();";
+  html += "    xhr.open('GET', '/update?pdt='+pdt+'&dpt='+dpt+'&mt='+mt+'&pmt='+pmt+'&lz='+lz+'&rz='+rz+'&cd='+cd+'&inv='+inv, true);";
+  html += "    xhr.send();";
+  html += "    var sts = document.getElementById('save_status'); if(sts) { sts.innerText = 'Settings Auto-Saved!'; setTimeout(function(){sts.innerText='';}, 2000); }";
+  html += "  }, 100);";
+  html += "}";
+  html += "function resetDefaults() {";
+  html += "  if (ACTIVE_PROFILE == 0) {";
+  html += "    document.getElementById('pdt').value = 90; updateVal('pdt', 90);";
+  html += "    document.getElementById('dpt').value = 300; updateVal('dpt', 300);";
+  html += "    document.getElementById('pmt').value = 25; updateVal('pmt', 25);";
+  html += "    document.getElementById('mt').value = 25; updateVal('mt', 25);";
+  html += "  } else {";
+  html += "    document.getElementById('pdt').value = 50; updateVal('pdt', 50);";
+  html += "    document.getElementById('dpt').value = 80; updateVal('dpt', 80);";
+  html += "    document.getElementById('pmt').value = 40; updateVal('pmt', 40);";
+  html += "    document.getElementById('mt').value = 60; updateVal('mt', 60);";
+  html += "  }";
+  html += "  document.getElementById('lz').value = 70; updateVal('lz', 70);";
+  html += "  document.getElementById('rz').value = 90; updateVal('rz', 90);";
+  html += "  document.getElementById('cd').value = 2000; updateVal('cd', 2000);";
+  html += "  saveConfig();";
+  html += "}";
+  html += "function permanentSave() {";
+  html += "  saveConfig();";
+  html += "  var sts = document.getElementById('save_status'); if(sts) { sts.innerText = 'Profile Permanently Saved!'; setTimeout(function(){sts.innerText='';}, 2000); }";
+  html += "}";
+  html += "</script>";
+  html += "</head><body>";
   html += "<h1>Bus Camera Calibration</h1>";
+  html += "<div style='margin-bottom: 15px;'>";
+  html += "<button onclick='window.location=\"/switch?p=0\"' style='background:";
+  html += (ACTIVE_PROFILE==0?"#4CAF50":"#555");
+  html += "; width:48%; padding: 15px; margin:0 2px;'>☀️ Day Profile</button>";
+  html += "<button onclick='window.location=\"/switch?p=1\"' style='background:";
+  html += (ACTIVE_PROFILE==1?"#2196F3":"#555");
+  html += "; width:48%; padding: 15px; margin:0 2px;'>🌙 Night Profile</button>";
+  html += "</div>";
+  html += "<h2>Total Passengers: <span id='pcount' style='color:#ffeb3b;'>"+String(passengerCount)+"</span></h2>";
   html += "<div><img src='/capture' id='cam' onload='setTimeout(refresh, 500)'></div>";
   html += "<br><p>Refreshes automatically for positioning. <a href='/capture' target='_blank'>Snapshot</a></p>";
+  
+  html += "<div class='control-group'><label title='Grayscale value (0-255) below which a pixel is considered part of a passenger (dark)'>Pixel Darkness Threshold (0-255) <span style='cursor:help; color:#aaa; font-weight:normal; font-size:12px;'>[?]</span> <span class='val' id='pdt_val'>"+String(PIXEL_DARK_THRESHOLD)+"</span></label>";
+  html += "<input type='range' id='pdt' min='0' max='255' value='"+String(PIXEL_DARK_THRESHOLD)+"' oninput='updateVal(\"pdt\", this.value); saveConfig();'></div>";
+
+  html += "<div class='control-group'><label title='How many total dark pixels must exist in the frame to count as a passenger mass (Lower if room is bright/target is small)'>Required Dark Pixels (0-4800) <span style='cursor:help; color:#aaa; font-weight:normal; font-size:12px;'>[?]</span> <span class='val' id='dpt_val'>"+String(DARK_PIXELS_THRESHOLD)+"</span></label>";
+  html += "<input type='range' id='dpt' min='0' max='4800' step='10' value='"+String(DARK_PIXELS_THRESHOLD)+"' oninput='updateVal(\"dpt\", this.value); saveConfig();'></div>";
+  
+  html += "<div class='control-group'><label title='How much a pixel must change in brightness from the last frame to be considered in motion'>Pixel Motion Diff (>X) (0-255) <span style='cursor:help; color:#aaa; font-weight:normal; font-size:12px;'>[?]</span> <span class='val' id='pmt_val'>"+String(PIXEL_MOTION_THRESHOLD)+"</span></label>";
+  html += "<input type='range' id='pmt' min='0' max='255' value='"+String(PIXEL_MOTION_THRESHOLD)+"' oninput='updateVal(\"pmt\", this.value); saveConfig();'></div>";
+
+  html += "<div class='control-group'><label title='Total number of changed pixels required to trigger motion tracking logic'>Total Motion Pixels (0-4800) <span style='cursor:help; color:#aaa; font-weight:normal; font-size:12px;'>[?]</span> <span class='val' id='mt_val'>"+String(MOTION_THRESHOLD)+"</span></label>";
+  html += "<input type='range' id='mt' min='0' max='4800' step='10' value='"+String(MOTION_THRESHOLD)+"' oninput='updateVal(\"mt\", this.value); saveConfig();'></div>";
+
+  html += "<div class='control-group'><label title='Horizontal threshold for entering. Blob must move left of this line. (160=Right edge, 0=Left edge)'>Left Zone (X coord) <span style='cursor:help; color:#aaa; font-weight:normal; font-size:12px;'>[?]</span> <span class='val' id='lz_val'>"+String(LEFT_ZONE)+"</span></label>";
+  html += "<input type='range' id='lz' min='0' max='160' value='"+String(LEFT_ZONE)+"' oninput='updateVal(\"lz\", this.value); saveConfig();'></div>";
+
+  html += "<div class='control-group'><label title='Horizontal threshold for exiting. Blob must move right of this line. (160=Right edge, 0=Left edge)'>Right Zone (X coord) <span style='cursor:help; color:#aaa; font-weight:normal; font-size:12px;'>[?]</span> <span class='val' id='rz_val'>"+String(RIGHT_ZONE)+"</span></label>";
+  html += "<input type='range' id='rz' min='0' max='160' value='"+String(RIGHT_ZONE)+"' oninput='updateVal(\"rz\", this.value); saveConfig();'></div>";
+
+  html += "<div class='control-group'><label title='Minimum time to wait after counting a passenger before allowing another count'>Cooldown (ms) <span style='cursor:help; color:#aaa; font-weight:normal; font-size:12px;'>[?]</span> <span class='val' id='cd_val'>"+String(COOLDOWN_MS)+"</span></label>";
+  html += "<input type='range' id='cd' min='0' max='10000' step='100' value='"+String(COOLDOWN_MS)+"' oninput='updateVal(\"cd\", this.value); saveConfig();'></div>";
+
+  html += "<div class='control-group' style='text-align:center;'><label title='Swap Left and Right zones for entering/exiting based on camera mount orientation.' style='display:inline-block; font-size:18px;'>Invert Direction <span style='cursor:help; color:#aaa; font-weight:normal; font-size:14px;'>[?]</span></label>";
+  html += "<input type='checkbox' id='inv' style='width:25px; height:25px; vertical-align:middle; margin-left:10px;' "+String(INVERT_DIRECTION ? "checked" : "")+" onchange='saveConfig()'></div>";
+
+  html += "<button onclick='permanentSave()' style='background:#008CBA; margin-bottom: 10px; padding:15px; font-weight:bold;'>💾 Save "+String(ACTIVE_PROFILE==0?"Day":"Night")+" Profile</button><br>";
+  html += "<button onclick='resetDefaults()' style='background:#f44336; margin-bottom: 20px;'>Reset to Factory Defaults</button>";
+
+  html += "<div id='save_status' style='color:#00ffcc; font-weight:bold; height:20px; margin-top:5px;'></div>";
+  html += "<script>var ACTIVE_PROFILE = "+String(ACTIVE_PROFILE)+";</script>";
   html += "<script>function refresh(){ document.getElementById('cam').src = '/capture?t=' + new Date().getTime(); }</script>";
+  html += "<script>setInterval(function(){ var x = new XMLHttpRequest(); x.onreadystatechange=function(){ if(x.readyState==4&&x.status==200){ document.getElementById('pcount').innerText=x.responseText; } }; x.open('GET','/count',true); x.send(); }, 1000);</script>";
   html += "</body></html>";
   server.send(200, "text/html", html);
+}
+
+void handleCount() {
+  server.send(200, "text/plain", String(passengerCount));
+}
+
+void handleUpdate() {
+  if (server.hasArg("pdt")) PIXEL_DARK_THRESHOLD = server.arg("pdt").toInt();
+  if (server.hasArg("dpt")) DARK_PIXELS_THRESHOLD = server.arg("dpt").toInt();
+  if (server.hasArg("mt")) MOTION_THRESHOLD = server.arg("mt").toInt();
+  if (server.hasArg("pmt")) PIXEL_MOTION_THRESHOLD = server.arg("pmt").toInt();
+  if (server.hasArg("lz")) LEFT_ZONE = server.arg("lz").toInt();
+  if (server.hasArg("rz")) RIGHT_ZONE = server.arg("rz").toInt();
+  if (server.hasArg("cd")) COOLDOWN_MS = server.arg("cd").toInt();
+  if (server.hasArg("inv")) INVERT_DIRECTION = (server.arg("inv") == "1");
+
+  // Save via new global schema
+  saveProfile(ACTIVE_PROFILE);
+  
+  server.send(200, "text/plain", "OK");
+}
+
+void handleSwitch() {
+  if (server.hasArg("p")) {
+    ACTIVE_PROFILE = server.arg("p").toInt();
+    loadProfile(ACTIVE_PROFILE);
+  }
+  // Redirect back to root
+  server.sendHeader("Location", "/");
+  server.send(303);
 }
 
 void handleCapture() {
@@ -142,8 +289,8 @@ void handleCapture() {
   // Detection works best on Grayscale.
   // Let's implement a BMP sender for the browser since we are in Grayscale mode.
 
-    size_t width = 160;
-    size_t height = 120;
+    size_t width = fb->width;
+    size_t height = fb->height;
     size_t imageSize = width * height;
     size_t fileSize = 54 + 1024 + imageSize; // Header + Palette + Data
     
@@ -341,12 +488,16 @@ void ringBell() {
   Serial.println("🔔 Ring complete");
 }
 
+void performOTA();
+void handleWiFiConnection();
+void tryConnectWiFi();
+void reconnectMQTT();
+void publishStatus();
+void sendMQTT(String dir);
+
 // MQTT callback for receiving commands
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  String message = "";
-  for (unsigned int i = 0; i < length; i++) {
-    message += (char)payload[i];
-  }
+void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
+  String message = String(payload);
   Serial.printf("📨 MQTT [%s]: %s\n", topic, message.c_str());
   
   // Check for ring command
@@ -358,7 +509,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   #ifdef OTA_ENABLED
   if (String(topic).indexOf("ota") >= 0) {
     // Parse JSON to get URL and version
-    // Simple parsing without ArduinoJson to save memory
     int urlStart = message.indexOf("\"url\":\"");
     int versionStart = message.indexOf("\"version\":\"");
     
@@ -374,16 +524,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         otaVersion = message.substring(versionStart, versionEnd);
         
         Serial.printf("📥 OTA Update requested: v%s\n", otaVersion.c_str());
-        Serial.printf("📥 Firmware URL: %s\n", otaUrl.c_str());
-        
-        // Check if we need to update (skip if same version unless forced)
-        bool forceUpdate = message.indexOf("\"force\":true") >= 0;
-        if (otaVersion == FIRMWARE_VERSION && !forceUpdate) {
-          Serial.println("ℹ️ Already on this version, skipping update");
-          return;
-        }
-        
-        // Set flag to perform OTA in main loop (not in callback!)
         otaPending = true;
       }
     }
@@ -391,36 +531,20 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   #endif
 }
 
-// Function to save image to SD card - accepts frame buffer and bounding box
-// Saves as BMP format with rectangle overlay and direction arrow
-// Image saving removed for NVS storage mode
-
-
 void setup() {
   Serial.begin(115200);
   delay(2000);
-  Serial.println("🚌 STABLE Bus Counter v1.2 (with SD Card + Timestamp)");
+  Serial.println("🚌 STABLE Bus Counter v1.2 (WSS Mode)");
   
-  Serial.printf("🔍 Heap: Free=%d MaxAlloc=%d\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap());
-  Serial.printf("🔍 PSRAM: Size=%d Free=%d\n", ESP.getPsramSize(), ESP.getFreePsram());
-  
-  if (ESP.getPsramSize() == 0) {
-    Serial.println("⚠️ WARNING: PSRAM not found! Check Tools > PSRAM > Enabled in Arduino IDE.");
-  }
-
-  // Initialize LED for detection indicator
+  // Initialize pins
   pinMode(LED_RED_PIN, OUTPUT);
   digitalWrite(LED_RED_PIN, LOW);
-  
   pinMode(LED_GREEN_PIN, OUTPUT);
   digitalWrite(LED_GREEN_PIN, LOW);
-  
-  // Initialize Buzzer pin - ACTIVE HIGH (HIGH = beep, LOW = silent)
   pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, LOW);  // Start with buzzer OFF
+  digitalWrite(BUZZER_PIN, LOW);
 
-  // IMPORTANT: Initialize camera FIRST before SD card to avoid I2C conflicts
-  // camera config
+  // Camera config
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -433,243 +557,144 @@ void setup() {
   config.pin_sscb_sda = SIOD_GPIO_NUM; config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM; config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 16000000;
-  config.pixel_format = PIXFORMAT_GRAYSCALE;  // Use grayscale for detection
-  config.frame_size = FRAMESIZE_QQVGA; // 160x120 to save memory
+  config.pixel_format = PIXFORMAT_GRAYSCALE;
+  config.frame_size = FRAMESIZE_QVGA; // Use QVGA (320x240) to avoid OV2640 144x120 corruption bug
   config.jpeg_quality = 12;
   config.fb_count = 1;
 
   if (esp_camera_init(&config) != ESP_OK) {
-    Serial.println("❌ Camera");
+    Serial.println("❌ Camera Init Failed");
     while(1);
   }
 
+  // Fetch the sensor to correct orientation
   sensor_t * s = esp_camera_sensor_get();
-  s->set_contrast(s, 2);
-  s->set_vflip(s, 1);   // Flip vertically
-  s->set_hmirror(s, 1); // Mirror horizontally (combined with vflip = 180° rotation)
-  Serial.println("✅ Camera");
+  if (s) {
+    s->set_vflip(s, 1);    // Rotate vertically (upside down fix)
+    s->set_hmirror(s, 1);  // Rotate horizontally (fix mirroring from vflip)
+  }
+
+  // MQTT Callback Setup
+  mqttClient.onMessage(mqttCallback);
+  mqttClient.onConnect([](bool sessionPresent) {
+    Serial.println("✅ MQTT Connected (WSS)");
+    mqttClient.subscribe(MQTT_TOPIC_RING, 1);
+    mqttClient.subscribe("sut/bus/+/ring", 1);
+    #ifdef OTA_ENABLED
+    mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
+    #endif
+  });
 
   // NVS Storage Init
   preferences.begin("bus-data", false);
   passengerCount = preferences.getInt("count", 0);
-  Serial.printf("💾 Restored Passenger Count: %d\n", passengerCount);
   
-  // Initialize SD card removed - using NVS
-
-  // Try default WiFi first (4 second timeout)
-  Serial.printf("📡 Trying default WiFi: %s\n", DEFAULT_WIFI_SSID);
+  ACTIVE_PROFILE = preferences.getInt("prof", 0);
+  loadProfile(ACTIVE_PROFILE);
+  
+  // WiFi Init
   WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
   
-  unsigned long startAttempt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < DEFAULT_WIFI_TIMEOUT) {
-    delay(100);
-    Serial.print(".");
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    wifiConnected = true;
-    Serial.println("\n✅ Default WiFi Connected: " + WiFi.localIP().toString());
-    
-    // Keep LED on for 3 seconds to indicate success
-    ledOn();
-    Serial.printf("🎥 View Live Camera at http://%s/\n", WiFi.localIP().toString().c_str());
-    delay(3000);
-    ledOff();
-    
-    // Configure NTP time
-    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-    Serial.println("🕐 NTP time configured");
-    timeConfigured = true;
-  } else {
-    Serial.println("\n⚠️ Default WiFi failed - will try fallback networks");
-    Serial.println("📱 Detection will work offline, retrying WiFi every 1 minute");
-    wifiConnecting = false;
-    lastWifiAttempt = millis();
-  }
-
-  Serial.println("🛡️ STABLE MODE - 2s cooldown active");
-  Serial.println(" NVS Storage Enabled (No SD Card)");
-
   // Calibration Server
   server.on("/", handleRoot);
+  server.on("/update", handleUpdate);
+  server.on("/switch", handleSwitch);
+  server.on("/count", handleCount);
   server.on("/capture", handleCapture);
   server.begin();
-  Serial.println("🌐 Web Server started");
-  if (wifiConnected) {
-      Serial.printf("🎥 View Live Camera at http://%s/\n", WiFi.localIP().toString().c_str());
-  }
-}
-
-
-// Try to connect to next WiFi network in the list
-void tryConnectWiFi() {
-  if (wifiConnecting) return;
-  
-  WiFi.disconnect(true);
-  delay(100);
-  
-  Serial.printf("📶 Trying WiFi %d/%d: %s\n", 
-                currentWifiIndex + 1, wifiNetworkCount, 
-                wifiNetworks[currentWifiIndex].ssid);
-  
-  WiFi.begin(wifiNetworks[currentWifiIndex].ssid, 
-             wifiNetworks[currentWifiIndex].password);
-  
-  wifiConnecting = true;
-  wifiConnectStart = millis();
-  lastWifiAttempt = millis();
-}
-
-// Handle non-blocking WiFi connection (call in loop)
-void handleWiFiConnection() {
-  // Check if connected
-  if (WiFi.status() == WL_CONNECTED) {
-    if (!wifiConnected) {
-      wifiConnected = true;
-      wifiConnecting = false;
-      Serial.println("\n✅ WiFi Connected: " + WiFi.localIP().toString());
-      Serial.printf("🎥 View Live Camera at http://%s/\n", WiFi.localIP().toString().c_str());
-      
-      // Configure NTP time
-      if (!timeConfigured) {
-        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-        Serial.println("🕐 NTP time configured");
-        timeConfigured = true;
-      }
-    }
-    return;
-  }
-  
-  // WiFi disconnected
-  if (wifiConnected) {
-    wifiConnected = false;
-    Serial.println("⚠️ WiFi Disconnected");
-  }
-  
-  // If currently trying to connect, check timeout
-  if (wifiConnecting) {
-    if (millis() - wifiConnectStart > WIFI_CONNECT_TIMEOUT) {
-      Serial.printf("⏱️ Timeout on %s\n", wifiNetworks[currentWifiIndex].ssid);
-      wifiConnecting = false;
-      // Move to next network
-      currentWifiIndex = (currentWifiIndex + 1) % wifiNetworkCount;
-      // Try next network immediately
-      tryConnectWiFi();
-    }
-    return;
-  }
-  
-  // If not connecting and interval passed, try again
-  if (millis() - lastWifiAttempt > WIFI_RETRY_INTERVAL) {
-    tryConnectWiFi();
-  }
 }
 
 void loop() {
-  // Handle LEDs (non-blocking)
   handleLeds();
-
-  // Handle WiFi connection (non-blocking)
   handleWiFiConnection();
-  server.handleClient(); // Handle web requests
+  server.handleClient();
 
-  
-  // Only handle MQTT if WiFi is connected
   if (wifiConnected) {
     if (!mqttClient.connected()) reconnectMQTT();
-    mqttClient.loop();
-    
-    // Check if OTA update is pending
     #ifdef OTA_ENABLED
-    if (otaPending) {
-      performOTA();
-    }
+    if (otaPending) performOTA();
     #endif
   }
 
   camera_fb_t * fb = esp_camera_fb_get();
   if (!fb) return;
 
-  // ROI scan (door area) - track bounding box of dark pixels
+  // ... (Detection logic remains same) ...
+  // Handle larger resolutions by processing a scaled-down grid
   int motion = 0, dark = 0, blobX = 0;
-  int blobMinX = 160, blobMaxX = 0, blobMinY = 120, blobMaxY = 0;
   int roiIdx = 0;
   
-  for (int y = 40; y < 70; y++) {
-    for (int x = 0; x < 160; x++) {
-      int idx = y * 160 + x;
+  // To simulate 160x120 from 320x240, step size is 2
+  int stepX = (fb->width == 320) ? 2 : 1;
+  int stepY = (fb->height == 240) ? 2 : 1;
+  
+  // Focus on the center/lower half of the door (y=40 to y=70 when unscaled)
+  int startY = 40 * stepY;
+  int endY = 70 * stepY;
+  
+  for (int y = startY; y < endY; y += stepY) {
+    for (int x = 0; x < fb->width; x += stepX) {
+      if (roiIdx >= 4800) break; // Buffer overflow protection
+      
+      int idx = y * fb->width + x;
       uint8_t p = fb->buf[idx];
       
       int diff = abs((int)p - (int)roiPrev[roiIdx]);
-      if (diff > 25) motion++;
+      if (diff > PIXEL_MOTION_THRESHOLD) motion++; // Threshold for motion
       
-      if (p < 90) {
-        dark++;
-        blobX += x;
-        // Track bounding box
-        if (x < blobMinX) blobMinX = x;
-        if (x > blobMaxX) blobMaxX = x;
-        if (y < blobMinY) blobMinY = y;
-        if (y > blobMaxY) blobMaxY = y;
+      // Look for the passengers (dark blobs in grayscale, adjust threshold if needed)
+      if (p < PIXEL_DARK_THRESHOLD) { 
+        dark++; 
+        blobX += (x / stepX); // Normalize x back to 0-160 scale for evaluation
       }
+      
       roiPrev[roiIdx++] = p;
     }
   }
   
   blobX /= max(1, dark);
-  
-  // Ensure valid bounding box (add padding)
-  if (blobMinX > blobMaxX) { blobMinX = blobX - 15; blobMaxX = blobX + 15; }
-  if (blobMinY > blobMaxY) { blobMinY = 40; blobMaxY = 70; }
-  blobMinX = max(0, blobMinX - 3);
-  blobMaxX = min(159, blobMaxX + 3);
-  blobMinY = max(0, blobMinY - 3);
-  blobMaxY = min(119, blobMaxY + 3);
 
-  // Debug output every 2 seconds to monitor detection
   static unsigned long lastDebugTime = 0;
-  if (millis() - lastDebugTime > 2000) {
-    Serial.printf("📊 motion:%d dark:%d blobX:%d state:%d\n", motion, dark, blobX, state);
+  if (millis() - lastDebugTime > 1500) {
+    Serial.printf("📊 [DEBUG] motion: %d (needs > %d), dark: %d (needs > %d), blobX: %d, state: %d\n", 
+                  motion, MOTION_THRESHOLD, dark, DARK_PIXELS_THRESHOLD, blobX, state);
     lastDebugTime = millis();
   }
 
-  // stable logic with cooldown (adjusted for smaller area/counts)
-  // Increased dark threshold from 80 to 300 to avoid noise triggers
-  if (motion > MOTION_THRESHOLD && dark > 300 && 
-      millis() - lastCountTime > COOLDOWN_MS) {
-    
-    int newState = (blobX < LEFT_ZONE) ? 1 : 
-                   (blobX > RIGHT_ZONE) ? 2 : state;
-    
-    // only count on state change   
+  if (motion > MOTION_THRESHOLD && dark > DARK_PIXELS_THRESHOLD && millis() - lastCountTime > COOLDOWN_MS) {
+    int newState = (blobX < LEFT_ZONE) ? 1 : (blobX > RIGHT_ZONE) ? 2 : state;
     if (newState != state) {
-      if (state == 1 && newState == 2) {  // LEFT to RIGHT = EXIT
-        if (passengerCount > 0) passengerCount--;
-        preferences.putInt("count", passengerCount); // Save to NVS
-        sendMQTT("exit");
-        Serial.printf("✅ EXIT   C:%d (x:%d→%d)\n", passengerCount, LEFT_ZONE, RIGHT_ZONE);
-        
-        // Red LED for Exit
-        triggerRedLed();
-        
-      } else if (state == 2 && newState == 1) {  // RIGHT to LEFT = ENTER
-        passengerCount++;
-        preferences.putInt("count", passengerCount); // Save to NVS
-        sendMQTT("enter");
-        Serial.printf("✅ ENTER  C:%d (x:%d→%d)\n", passengerCount, RIGHT_ZONE, LEFT_ZONE);
-        
-        // Green LED for Enter
-        triggerGreenLed();
+      if (state == 1 && newState == 2) {
+        // Moved from left to right
+        if (INVERT_DIRECTION) {
+            passengerCount++;
+            sendMQTT("enter");
+            triggerGreenLed();
+        } else {
+            if (passengerCount > 0) passengerCount--;
+            sendMQTT("exit");
+            triggerRedLed();
+        }
+        preferences.putInt("count", passengerCount);
+      } else if (state == 2 && newState == 1) {
+        // Moved from right to left
+        if (INVERT_DIRECTION) {
+            if (passengerCount > 0) passengerCount--;
+            sendMQTT("exit");
+            triggerRedLed();
+        } else {
+            passengerCount++;
+            sendMQTT("enter");
+            triggerGreenLed();
+        }
+        preferences.putInt("count", passengerCount);
       }
       state = newState;
       lastCountTime = millis();
     }
   }
-  
   esp_camera_fb_return(fb);
 
-  // --- MERGED: RSSI STATUS HEARTBEAT ---
-  // Send status every 5 seconds if connected
   if (wifiConnected) {
     static unsigned long lastStatusTime = 0;
     if (millis() - lastStatusTime > 5000) {
@@ -677,79 +702,50 @@ void loop() {
       lastStatusTime = millis();
     }
   }
-
   delay(30);
 }
 
 void sendMQTT(String dir) {
-  if (!wifiConnected) return;  // Skip MQTT if no WiFi
+  Serial.printf("🚀 DETECTED: %s! Passenger count: %d\n", dir.c_str(), passengerCount);
+  if (!mqttClient.connected()) return;
   char buf[80];
   snprintf(buf, 80, "{\"dir\":\"%s\",\"count\":%d,\"t\":%ld}", 
            dir.c_str(), passengerCount, millis()/1000);
-  mqttClient.publish(mqtt_topic, buf);
+  mqttClient.publish(mqtt_topic, 1, false, buf);
 }
 
-// --- MERGED: PUBLISH STATUS FUNCTION ---
 void publishStatus() {
   if (!mqttClient.connected()) return;
-  
   long rssi = WiFi.RSSI();
+  Serial.printf("📡 Status -> RSSI: %ld, Count: %d\n", rssi, passengerCount);
   char buf[100];
-  // Include count in status so server syncs it
   snprintf(buf, 100, "{\"rssi\":%ld, \"uptime\":%lu, \"count\":%d}", rssi, millis()/1000, passengerCount);
-  
-  // Topic: sut/bus/ESP32-CAM-01/status (from config.h)
-  mqttClient.publish(MQTT_TOPIC_STATUS, buf);
+  mqttClient.publish(MQTT_TOPIC_STATUS, 1, false, buf);
 }
 
 void reconnectMQTT() {
   static unsigned long lastMqttAttempt = 0;
-  if (millis() - lastMqttAttempt < 10000) return;
+  if (millis() - lastMqttAttempt < 5000) return;
   lastMqttAttempt = millis();
-  
-  if (mqttClient.connected()) {
+
+  const char* mqttHost = mqttServers[currentMqttIndex].host;
+  if (strlen(mqttHost) == 0) {
+    currentMqttIndex = (currentMqttIndex + 1) % mqttServerCount;
+    lastMqttAttempt = millis() - 5000; // retry immediately
     return;
   }
 
-  // Skip empty hosts
-  while (strlen(mqttServers[currentMqttIndex].host) == 0) {
-    currentMqttIndex = (currentMqttIndex + 1) % mqttServerCount;
-  }
-
-  const char* mqttHost = mqttServers[currentMqttIndex].host;
-  int mqttPort = mqttServers[currentMqttIndex].port;
+  // Build wss:// URI for PsychicMqttClient
+  char uri[128];
+  snprintf(uri, sizeof(uri), "wss://%s:443/mqtt", mqttHost);
   
-  Serial.printf("🔌 MQTT trying %d/%d: %s:%d (WSS)\n", 
-                currentMqttIndex + 1, mqttServerCount,
-                mqttHost, mqttPort);
+  Serial.printf("🔌 MQTT trying: %s\n", uri);
 
-  // Set up SSL Root CA for Cloudflare
-  espClient.setCACert(BALTIMORE_CYBERTRUST_ROOT_CA);
-
-  // Configure PsychicMqttClient for WebSockets
-  mqttClient.setServer(mqttHost, mqttPort);
-  mqttClient.setClient(&espClient);
-  mqttClient.setWebSocketPath("/mqtt"); // Standard WebSocket path for MQTT
+  mqttClient.setServer(uri);
   mqttClient.setClientId(MQTT_CLIENT_ID);
-  mqttClient.onMessage(mqttCallback); // Set callback for incoming messages
-
-  if (mqttClient.connect()) {
-    Serial.println("✅ MQTT Connected (WSS)");
-    // Subscribe to ring command topic
-    mqttClient.subscribe(MQTT_TOPIC_RING);
-    mqttClient.subscribe("sut/bus/+/ring");  // Also listen for bus-specific ring
-    Serial.println("🔔 Subscribed to ring topics");
-    
-    // Subscribe to OTA topic
-    #ifdef OTA_ENABLED
-    mqttClient.subscribe(MQTT_TOPIC_OTA);
-    Serial.printf("📥 Subscribed to OTA topic: %s\n", MQTT_TOPIC_OTA);
-    Serial.printf("📌 Current firmware version: %s\n", FIRMWARE_VERSION);
-    #endif
-  } else {
-    Serial.printf("❌ MQTT Failed, trying next server. Error: %d\n", mqttClient.state());
-    currentMqttIndex = (currentMqttIndex + 1) % mqttServerCount;
-  }
+  mqttClient.attachArduinoCACertBundle(true);
+  mqttClient.connect(); 
+  // Note: connect() is void, status handled by onConnect callback
 }
 
 // =============================================================================
@@ -781,7 +777,7 @@ void performOTA() {
   snprintf(statusBuf, sizeof(statusBuf), 
            "{\"status\":\"downloading\",\"version\":\"%s\",\"current\":\"%s\"}", 
            otaVersion.c_str(), FIRMWARE_VERSION);
-  mqttClient.publish(MQTT_TOPIC_STATUS, statusBuf);
+  mqttClient.publish(MQTT_TOPIC_STATUS, 1, false, statusBuf);
   
   // Keep LED on during download
   digitalWrite(DETECT_LED, HIGH);
@@ -804,7 +800,7 @@ void performOTA() {
                "{\"status\":\"failed\",\"error\":\"%s\",\"code\":%d}", 
                httpUpdate.getLastErrorString().c_str(),
                httpUpdate.getLastError());
-      mqttClient.publish(MQTT_TOPIC_STATUS, statusBuf);
+      mqttClient.publish(MQTT_TOPIC_STATUS, 1, false, statusBuf);
       
       // Blink LED to indicate failure
       for (int i = 0; i < 10; i++) {
@@ -820,7 +816,7 @@ void performOTA() {
       snprintf(statusBuf, sizeof(statusBuf), 
                "{\"status\":\"no_update\",\"version\":\"%s\"}", 
                FIRMWARE_VERSION);
-      mqttClient.publish(MQTT_TOPIC_STATUS, statusBuf);
+      mqttClient.publish(MQTT_TOPIC_STATUS, 1, false, statusBuf);
       digitalWrite(DETECT_LED, LOW);
       break;
       
@@ -831,8 +827,7 @@ void performOTA() {
       snprintf(statusBuf, sizeof(statusBuf), 
                "{\"status\":\"success\",\"version\":\"%s\",\"rebooting\":true}", 
                otaVersion.c_str());
-      mqttClient.publish(MQTT_TOPIC_STATUS, statusBuf);
-      mqttClient.loop();  // Ensure message is sent
+      mqttClient.publish(MQTT_TOPIC_STATUS, 1, false, statusBuf);
       
       // Keep LED on for 2 seconds before reboot
       digitalWrite(DETECT_LED, HIGH);
@@ -848,3 +843,56 @@ void performOTA() {
   otaVersion = "";
 }
 #endif
+
+void tryConnectWiFi() {
+  if (wifiNetworkCount == 0) return;
+  wifiConnecting = true;
+  wifiConnectStart = millis();
+  
+  const char* ssid = wifiNetworks[currentWifiIndex].ssid;
+  const char* password = wifiNetworks[currentWifiIndex].password;
+  
+  Serial.printf("📡 Connecting to WiFi: %s\n", ssid);
+  WiFi.disconnect();
+  WiFi.begin(ssid, password);
+  lastWifiAttempt = millis();
+}
+
+// Handle non-blocking WiFi connection
+void handleWiFiConnection() {
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wifiConnected) {
+      wifiConnected = true;
+      wifiConnecting = false;
+      Serial.println("\n✅ WiFi Connected: " + WiFi.localIP().toString());
+      Serial.printf("🎥 View Live Camera at http://%s/\n", WiFi.localIP().toString().c_str());
+      
+      // Configure NTP time
+      if (!timeConfigured) {
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+        Serial.println("🕐 NTP time configured");
+        timeConfigured = true;
+      }
+    }
+    return;
+  }
+  
+  if (wifiConnected) {
+    wifiConnected = false;
+    Serial.println("⚠️ WiFi Disconnected");
+  }
+  
+  if (wifiConnecting) {
+    if (millis() - wifiConnectStart > WIFI_CONNECT_TIMEOUT) {
+      Serial.printf("⏱️ Timeout on %s\n", wifiNetworks[currentWifiIndex].ssid);
+      wifiConnecting = false;
+      currentWifiIndex = (currentWifiIndex + 1) % wifiNetworkCount;
+      tryConnectWiFi();
+    }
+    return;
+  }
+  
+  if (millis() - lastWifiAttempt > WIFI_RETRY_INTERVAL) {
+    tryConnectWiFi();
+  }
+}
