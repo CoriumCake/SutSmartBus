@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../config/api_config.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
@@ -25,7 +26,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('[ApiService] Error fetching buses: $e');
+      debugPrint('[ApiService] Error fetching buses: $e');
       return [];
     }
   }
@@ -76,7 +77,7 @@ class ApiService {
       }
       return [];
     } catch (e) {
-      print('[ApiService] Error fetching routes: $e');
+      debugPrint('[ApiService] Error fetching routes: $e');
       return [];
     }
   }
@@ -208,6 +209,85 @@ class ApiService {
       await _dio.delete('/api/debug/location/$busId');
     } catch (e) {
       // Silent
+    }
+  }
+
+  // ─── PM Zones ────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> fetchPMZones() async {
+    try {
+      final response = await _dio.get('/api/pm_zones');
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  Future<bool> createPMZone(Map<String, dynamic> zoneData) async {
+    try {
+      final response = await _dio.post('/api/pm_zones', data: zoneData);
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> updatePMZone(String zoneId, Map<String, dynamic> zoneData) async {
+    try {
+      final response = await _dio.put('/api/pm_zones/\$zoneId', data: zoneData);
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<bool> deletePMZone(String zoneId) async {
+    try {
+      await _dio.delete('/api/pm_zones/\$zoneId');
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // ─── Feedback ────────────────────────────────────
+
+  Future<bool> submitFeedback(String name, String message) async {
+    try {
+      final response = await _dio.post('/api/feedback', data: {
+        'name': name,
+        'message': message,
+      });
+      return response.statusCode == 200 || response.statusCode == 201;
+    } catch (e) {
+      debugPrint('[ApiService] Error submitting feedback: \$e');
+      return false;
+    }
+  }
+
+  // ─── Health & System ─────────────────────────────
+
+  Future<Map<String, dynamic>?> fetchSystemInfo() async {
+    try {
+      final response = await _dio.get('/api/system-info');
+      if (response.statusCode == 200) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<bool> checkHealth() async {
+    try {
+      final response = await _dio.get('/health');
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
     }
   }
 }

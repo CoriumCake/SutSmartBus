@@ -1,22 +1,24 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mqtt_client/mqtt_client.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
 import '../services/api_service.dart';
 import '../services/mqtt_service.dart';
-import '../services/route_storage_service.dart';
 
 class DataState {
   final List<Bus> buses;
   final List<BusRoute> routes;
   final bool loading;
   final String? error;
+  final MqttConnectionState mqttStatus;
 
   DataState({
     this.buses = const [],
     this.routes = const [],
     this.loading = true,
     this.error,
+    this.mqttStatus = MqttConnectionState.disconnected,
   });
 
   DataState copyWith({
@@ -24,12 +26,14 @@ class DataState {
     List<BusRoute>? routes,
     bool? loading,
     String? error,
+    MqttConnectionState? mqttStatus,
   }) {
     return DataState(
       buses: buses ?? this.buses,
       routes: routes ?? this.routes,
       loading: loading ?? this.loading,
       error: error,
+      mqttStatus: mqttStatus ?? this.mqttStatus,
     );
   }
 }
@@ -55,7 +59,10 @@ class DataNotifier extends StateNotifier<DataState> {
       await refreshBuses();
 
       // 3. Connect MQTT
-      _mqtt.onMessage = _handleMqttMessage;
+      _mqtt.onMessage = handleMqttMessage;
+      _mqtt.statusStream.listen((status) {
+        state = state.copyWith(mqttStatus: status);
+      });
       await _mqtt.connect();
 
       // 4. Start polling fallback (every 10s)
@@ -72,8 +79,7 @@ class DataNotifier extends StateNotifier<DataState> {
 
   Future<void> refreshBuses() async {
     final apiBuses = await _api.fetchBuses();
-    if (apiBuses.isEmpty) return;
-
+    // Allow empty list to update state if necessary
     final merged = _mergeBuses(state.buses, apiBuses);
     state = state.copyWith(buses: merged);
   }
@@ -121,7 +127,7 @@ class DataNotifier extends StateNotifier<DataState> {
     return merged;
   }
 
-  void _handleMqttMessage(String topic, Map<String, dynamic> data) {
+  void handleMqttMessage(String topic, Map<String, dynamic> data) {
     if (topic == 'sut/app/bus/location' || topic == 'sut/bus/gps') {
       _handleLocationUpdate(data);
     } else if (topic == 'sut/bus/gps/fast') {
@@ -148,6 +154,25 @@ class DataNotifier extends StateNotifier<DataState> {
       );
       state = state.copyWith(buses: buses);
     }
+  }
+
+  /// Manually inject or update a bus in the local state (used by simulation)
+  void updateBusLocally(Bus bus) {
+    final buses = [...state.buses];
+    final idx = buses.indexWhere((b) => b.id == bus.id);
+
+    if (idx >= 0) {
+      buses[idx] = bus;
+    } else {
+      buses.add(bus);
+    }
+    state = state.copyWith(buses: buses);
+  }
+
+  void removeBusLocally(String id) {
+    final buses = [...state.buses];
+    buses.removeWhere((b) => b.id == id);
+    state = state.copyWith(buses: buses);
   }
 
   void _handleLocationUpdate(Map<String, dynamic> data) {
@@ -237,6 +262,7 @@ final dataProvider = StateNotifierProvider<DataNotifier, DataState>((ref) {
 });
 
 // Convenience selectors
-final busesProvider = Provider<List<Bus>>((ref) => ref.watch(dataProvider).buses);
-final routesProvider = Provider<List<BusRoute>>((ref) => ref.watch(dataProvider).routes);
-final dataLoadingProvider = Provider<bool>((ref) => ref.watch(dataProvider).loading);
+final busesProvider = Provider<List<Bus>>((ref) => ref.watch(dataProvider.select((s) => s.buses)));
+final routesProvider = Provider<List<BusRoute>>((ref) => ref.watch(dataProvider.select((s) => s.routes)));
+final dataLoadingProvider = Provider<bool>((ref) => ref.watch(dataProvider.select((s) => s.loading)));
+final mqttStatusProvider = Provider<MqttConnectionState>((ref) => ref.watch(dataProvider.select((s) => s.mqttStatus)));

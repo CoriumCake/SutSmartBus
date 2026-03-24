@@ -1,4 +1,5 @@
-import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform; // Still need for Android check, but must guard it
 import 'env.dart';
 
 class ApiConfig {
@@ -7,10 +8,14 @@ class ApiConfig {
     if (Env.isTunnelMode) return Env.apiUrl;
 
     String host = Env.serverIp;
-    // Android emulator needs 10.0.2.2 to reach host's localhost
-    if (Platform.isAndroid && (host == 'localhost' || host == '127.0.0.1')) {
-      host = '10.0.2.2';
+    
+    // On Web, Platform.isAndroid throws Unsupported error.
+    if (!kIsWeb) {
+      if (Platform.isAndroid && (host == 'localhost' || host == '127.0.0.1')) {
+        host = '10.0.2.2';
+      }
     }
+    
     return 'http://$host:${Env.apiPort}';
   }
 
@@ -22,9 +27,13 @@ class ApiConfig {
     }
 
     String host = Env.mqttBrokerHost.isEmpty ? Env.serverIp : Env.mqttBrokerHost;
-    if (Platform.isAndroid && (host == 'localhost' || host == '127.0.0.1')) {
-      host = '10.0.2.2';
+    
+    if (!kIsWeb) {
+      if (Platform.isAndroid && (host == 'localhost' || host == '127.0.0.1')) {
+        host = '10.0.2.2';
+      }
     }
+    
     return 'ws://$host:${Env.mqttWebSocketPort}';
   }
 

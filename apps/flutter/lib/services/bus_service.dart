@@ -2,13 +2,13 @@ import 'package:dio/dio.dart';
 import '../core/config.dart'; // Assuming config.dart contains API_BASE_URL and API_SECRET_KEY
 
 class RingRequest {
-  final String bus_mac;
+  final String busMac;
 
-  RingRequest({required this.bus_mac});
+  RingRequest({required this.busMac});
 
   Map<String, dynamic> toJson() {
     return {
-      'bus_mac': bus_mac,
+      'bus_mac': busMac,
     };
   }
 }
@@ -18,14 +18,14 @@ class BusService {
   final String _apiKey;
 
   BusService() :
-    _dio = Dio(BaseOptions(baseUrl: AppConfig.API_BASE_URL)),
-    _apiKey = AppConfig.API_SECRET_KEY;
+    _dio = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)),
+    _apiKey = AppConfig.apiSecretKey;
 
   Future<void> ringBell(String busMac) async {
     try {
       final response = await _dio.post(
         '/api/ring',
-        data: RingRequest(bus_mac: busMac).toJson(),
+        data: RingRequest(busMac: busMac).toJson(),
         options: Options(
           headers: {
             'X-API-Key': _apiKey,

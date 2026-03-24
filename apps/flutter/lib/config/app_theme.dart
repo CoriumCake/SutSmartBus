@@ -28,8 +28,7 @@ class AppTheme {
         primary: sutOrange,
         onPrimary: Colors.white,
         secondary: sutBlue,
-        surface: lightSurface,
-        background: lightBg,
+        surface: lightBg,
         error: const Color(0xFFBA1A1A),
       ),
       scaffoldBackgroundColor: lightBg,
@@ -50,8 +49,7 @@ class AppTheme {
         primary: sutOrange,
         onPrimary: Colors.black,
         secondary: const Color(0xFF90CAF9),
-        surface: darkSurface,
-        background: darkBg,
+        surface: darkBg,
       ),
       scaffoldBackgroundColor: darkBg,
       textTheme: _buildTextTheme(base.textTheme, darkTextPrimary, darkTextSecondary),
@@ -94,7 +92,7 @@ class AppTheme {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: sutOrange.withOpacity(0.1), width: 1),
+        side: BorderSide(color: sutOrange.withValues(alpha: 0.1), width: 1),
       ),
       margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
     );

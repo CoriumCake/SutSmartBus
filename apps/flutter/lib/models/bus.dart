@@ -15,6 +15,7 @@ class Bus {
   final int lastUpdated; // Unix timestamp in milliseconds
   final String? routeId;
   final bool isFake;
+  final int? personCount;
 
   Bus({
     required this.id,
@@ -33,6 +34,7 @@ class Bus {
     this.lastUpdated = 0,
     this.routeId,
     this.isFake = false,
+    this.personCount,
   });
 
   bool get isOffline => (DateTime.now().millisecondsSinceEpoch - lastUpdated) > 60000;
@@ -68,6 +70,7 @@ class Bus {
       rssi: json['rssi'] as int?,
       lastUpdated: timeVal,
       routeId: json['route_id']?.toString(),
+      personCount: json['person_count'] as int?,
     );
   }
 
@@ -84,6 +87,7 @@ class Bus {
     bool? isOnline,
     int? lastUpdated,
     String? routeId,
+    int? personCount,
   }) {
     return Bus(
       id: id,
@@ -102,6 +106,7 @@ class Bus {
       lastUpdated: lastUpdated ?? this.lastUpdated,
       routeId: routeId ?? this.routeId,
       isFake: isFake,
+      personCount: personCount ?? this.personCount,
     );
   }
 }

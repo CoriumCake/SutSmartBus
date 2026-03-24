@@ -24,20 +24,27 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           // Header
           Text(t('settings'),
-              style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+              style: theme.textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 20),
 
           // ─── Appearance ─────────────────────────
-          _sectionCard(theme, icon: Icons.palette, title: t('darkMode'),
+          _sectionCard(
+            theme,
+            icon: Icons.palette,
+            title: t('darkMode'),
             trailing: Switch(
               value: themeState.isDark,
               onChanged: (_) => ref.read(themeProvider.notifier).toggleTheme(),
-              activeColor: theme.colorScheme.primary,
+              activeThumbColor: theme.colorScheme.primary,
             ),
           ),
 
           // ─── Notifications ──────────────────────
-          _sectionCard(theme, icon: Icons.notifications_none, title: t('notifications'),
+          _sectionCard(
+            theme,
+            icon: Icons.notifications_none,
+            title: t('notifications'),
             trailing: Consumer(builder: (context, ref, _) {
               final notifState = ref.watch(notificationProvider);
               return Switch(
@@ -49,13 +56,16 @@ class SettingsScreen extends ConsumerWidget {
                     ref.read(notificationProvider.notifier).disable();
                   }
                 },
-                activeColor: theme.colorScheme.primary,
+                activeThumbColor: theme.colorScheme.primary,
               );
             }),
           ),
 
           // ─── Language ───────────────────────────
-          _sectionCard(theme, icon: Icons.language, title: t('language'),
+          _sectionCard(
+            theme,
+            icon: Icons.language,
+            title: t('language'),
             trailing: Text(langState.language == 'th' ? 'ไทย' : 'English',
                 style: TextStyle(color: theme.colorScheme.primary)),
             onTap: () => _showLanguageDialog(context, ref),
@@ -63,49 +73,86 @@ class SettingsScreen extends ConsumerWidget {
 
           // ─── Debug Mode ─────────────────────────
           if (debugState.isDevMachine) ...[
-            _sectionCard(theme, icon: Icons.bug_report, title: t('debugMode'),
+            _sectionCard(
+              theme,
+              icon: Icons.bug_report,
+              title: t('debugMode'),
               trailing: Switch(
                 value: debugState.debugMode,
-                onChanged: (_) => ref.read(debugProvider.notifier).toggleDebug(),
-                activeColor: Colors.red,
+                onChanged: (_) =>
+                    ref.read(debugProvider.notifier).toggleDebug(),
+                activeThumbColor: Colors.red,
               ),
             ),
-            _sectionCard(theme, icon: Icons.build, title: 'Testing & Debug Tools',
+            _sectionCard(
+              theme,
+              icon: Icons.build,
+              title: 'Testing & Debug Tools',
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.push('/testing'),
+            ),
+            _sectionCard(
+              theme,
+              icon: Icons.developer_mode,
+              title: 'Developer Mode',
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/developer'),
             ),
           ],
 
           const SizedBox(height: 20),
 
           // ─── Navigation Links ───────────────────
-          _sectionCard(theme, icon: Icons.directions_bus, title: t('busManagement'),
+          _sectionCard(
+            theme,
+            icon: Icons.directions_bus,
+            title: t('busManagement'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/bus-management'),
           ),
-          _sectionCard(theme, icon: Icons.map, title: t('routeAdmin'),
+          _sectionCard(
+            theme,
+            icon: Icons.map,
+            title: t('routeAdmin'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/bus-route-admin'),
           ),
-          _sectionCard(theme, icon: Icons.info_outline, title: t('about'),
+          _sectionCard(
+            theme,
+            icon: Icons.info_outline,
+            title: t('about'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/about'),
+          ),
+          _sectionCard(
+            theme,
+            icon: Icons.feedback_outlined,
+            title: 'Feedback',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/feedback'),
           ),
 
           // ─── Debug Info ─────────────────────────
           if (debugState.debugMode) ...[
             const SizedBox(height: 20),
-            Text('Developer', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text('Developer',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _infoRow('API', ApiConfig.baseUrl),
-                    _infoRow('Mode', ApiConfig.baseUrl.contains('tunnel') ? 'Tunnel' : 'Local'),
+                    _infoRow(
+                        'Mode',
+                        ApiConfig.baseUrl.contains('tunnel')
+                            ? 'Tunnel'
+                            : 'Local'),
                     _infoRow('Device ID', debugState.deviceId ?? 'Unknown'),
                     _infoRow('API Calls', '${debugState.apiCallCount}'),
                   ],
@@ -118,7 +165,8 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _sectionCard(ThemeData theme, {
+  Widget _sectionCard(
+    ThemeData theme, {
     required IconData icon,
     required String title,
     Widget? trailing,
@@ -144,8 +192,10 @@ class SettingsScreen extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
-          Flexible(child: Text(value, style: const TextStyle(fontSize: 12),
-              overflow: TextOverflow.ellipsis)),
+          Flexible(
+              child: Text(value,
+                  style: const TextStyle(fontSize: 12),
+                  overflow: TextOverflow.ellipsis)),
         ],
       ),
     );

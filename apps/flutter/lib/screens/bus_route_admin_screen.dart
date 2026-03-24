@@ -94,7 +94,6 @@ class _BusRouteAdminScreenState extends ConsumerState<BusRouteAdminScreen> {
   @override
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
-    final theme = Theme.of(context);
 
     return DefaultTabController(
       length: 2,
@@ -158,7 +157,7 @@ class _BusRouteAdminScreenState extends ConsumerState<BusRouteAdminScreen> {
                 const Text('Assigned Route:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _localRoutes.any((r) => r.routeId == currentRouteId) ? currentRouteId : 'none',
+                  initialValue: _localRoutes.any((r) => r.routeId == currentRouteId) ? currentRouteId : 'none',
                   decoration: InputDecoration(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),

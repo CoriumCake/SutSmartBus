@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/data_provider.dart';
+import '../models/bus.dart';
 import '../utils/air_quality_utils.dart';
 import '../widgets/air_quality_map.dart';
 
@@ -14,7 +15,6 @@ class AirQualityDashboardScreen extends ConsumerStatefulWidget {
 class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardScreen> {
   String _timeRange = '1h';
   List<Map<String, dynamic>> _heatmapData = [];
-  bool _loading = true;
 
   @override
   void initState() {
@@ -23,18 +23,19 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
   }
 
   Future<void> _fetchData() async {
-    setState(() => _loading = true);
+    // setState(() => _loading = true); // Removed unused _loading variable
     try {
       final api = ref.read(apiServiceProvider);
       final data = await api.fetchHeatmapData(timeRange: _timeRange);
       if (mounted) {
         setState(() {
           _heatmapData = data;
-          _loading = false;
+          // _loading = false; // Removed unused _loading variable
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _loading = false);
+      // if (mounted) setState(() => _loading = false); // Removed unused _loading variable
+      // Error handling can be added here if needed
     }
   }
 
@@ -125,7 +126,7 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
               child: Text('Device Reporting Status', style: theme.textTheme.titleLarge),
             ),
             const SizedBox(height: 8),
-            ...buses.map((bus) => _buildBusAqiTile(bus)).toList(),
+            ...buses.map((bus) => _buildBusAqiTile(bus)),
             
             const SizedBox(height: 40),
           ],
@@ -143,9 +144,9 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Column(
         children: [
@@ -182,7 +183,7 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: percent,
-              backgroundColor: color.withOpacity(0.1),
+              backgroundColor: color.withValues(alpha: 0.1),
               color: color,
               minHeight: 8,
             ),
@@ -192,15 +193,14 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
     );
   }
 
-  Widget _buildBusAqiTile(bus) {
-    final theme = Theme.of(context);
+  Widget _buildBusAqiTile(Bus bus) {
     final pm = bus.pm25 ?? 0.0;
     final color = getPMColor(pm);
 
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: color.withOpacity(0.1),
+          backgroundColor: color.withValues(alpha: 0.1),
           child: Icon(Icons.sensors, color: color),
         ),
         title: Text(bus.busName, style: const TextStyle(fontWeight: FontWeight.bold)),

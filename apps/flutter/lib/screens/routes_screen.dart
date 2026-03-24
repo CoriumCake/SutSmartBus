@@ -22,7 +22,6 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
   Map<String, BusRouteInfo> _busRoutes = {};
   List<BusRoute> _localRoutes = [];
   int _passengerCount = 0;
-  bool _refreshing = false;
 
   @override
   void initState() {
@@ -68,10 +67,8 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
   }
 
   Future<void> _onRefresh() async {
-    setState(() => _refreshing = true);
     await ref.read(dataProvider.notifier).refreshBuses();
     await _fetchPassengerCount();
-    setState(() => _refreshing = false);
   }
 
   void _handleBusPress(Bus bus) {

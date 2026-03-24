@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
+import '../providers/debug_provider.dart';
 
 class AboutScreen extends ConsumerWidget {
   const AboutScreen({super.key});
@@ -29,7 +31,7 @@ class AboutScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: colorScheme.primary.withOpacity(0.3),
+                        color: colorScheme.primary.withValues(alpha: 0.3),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),
@@ -45,6 +47,25 @@ class AboutScreen extends ConsumerWidget {
                 Text(
                   'Version 1.2.0 (Build 105)',
                   style: theme.textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 8),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final deviceId = ref.watch(debugProvider).deviceId;
+                    if (deviceId == null) return const SizedBox.shrink();
+                    return GestureDetector(
+                      onLongPress: () {
+                        Clipboard.setData(ClipboardData(text: deviceId));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Device ID copied to clipboard')),
+                        );
+                      },
+                      child: Text(
+                        'Device ID: $deviceId',
+                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -144,7 +165,7 @@ class AboutScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, size: 20, color: color),
@@ -180,7 +201,7 @@ class AboutScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary.withOpacity(0.5)),
+            Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
           ],
         ),
       ),

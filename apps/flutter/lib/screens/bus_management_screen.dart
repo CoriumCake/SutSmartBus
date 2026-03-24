@@ -91,7 +91,7 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
                 success = await api.createBus(macController.text, nameController.text);
               }
 
-              if (success && mounted) {
+              if (success && ctx.mounted) {
                 Navigator.pop(ctx);
                 _fetchBuses();
                 ref.read(dataProvider.notifier).refreshBuses();
@@ -117,7 +117,7 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
             onPressed: () async {
               final api = ref.read(apiServiceProvider);
               final success = await api.deleteBus(bus.busMac);
-              if (success && mounted) {
+              if (success && ctx.mounted) {
                 Navigator.pop(ctx);
                 _fetchBuses();
                 ref.read(dataProvider.notifier).refreshBuses();
@@ -163,7 +163,7 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
                 hintText: 'Search by name or MAC...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(32),
                   borderSide: BorderSide.none,
@@ -197,7 +197,7 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
-          backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+          backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
           child: Icon(Icons.directions_bus, color: theme.colorScheme.primary),
         ),
         title: Text(bus.busName, style: const TextStyle(fontWeight: FontWeight.bold)),

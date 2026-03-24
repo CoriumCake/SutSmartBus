@@ -95,7 +95,7 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
       final lon = double.parse(parts[1]);
       final avgPm25 = values.reduce((a, b) => a + b) / values.length;
 
-      final color = getPMColor(avgPm25).withOpacity(0.5);
+      final color = getPMColor(avgPm25).withValues(alpha: 0.5);
 
       newPolygons.add(
         Polygon(
@@ -107,7 +107,6 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
           ],
           color: color,
           borderStrokeWidth: 0,
-          isFilled: true,
         ),
       );
     });
@@ -146,10 +145,10 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
           child: Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Theme.of(context).cardColor.withOpacity(0.9),
+              color: Theme.of(context).cardColor.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(32),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4)),
+                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
               ],
             ),
             child: Row(

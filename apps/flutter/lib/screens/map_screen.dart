@@ -7,10 +7,13 @@ import 'package:geolocator/geolocator.dart';
 import '../services/bus_service.dart';
 import '../providers/data_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/test_mode_provider.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../utils/map_utils.dart';
+import '../providers/simulation_provider.dart';
+import 'package:mqtt_client/mqtt_client.dart';
 
 class IncomingBus {
   final Bus bus;
@@ -41,40 +44,64 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final MapController _mapController = MapController();
   Position? _userLocation;
   BusRoute? _activeRoute;
-  Bus? _ridingBus;
   int _currentStopIndex = 0;
   final BusService _busService = BusService();
+  StreamSubscription<Position>? _positionStream;
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
 
   @override
   void initState() {
     super.initState();
-    _getUserLocation();
+    _initLocation();
   }
 
-  Future<void> _getUserLocation() async {
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initLocation() async {
+    final hasPermission = await _handleLocationPermission();
+    if (!hasPermission) return;
+
+    // Get current position once for initial view
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return;
-
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      
+      final position = await Geolocator.getCurrentPosition();
       if (mounted) {
         setState(() => _userLocation = position);
         _mapController.move(LatLng(position.latitude, position.longitude), 15.5);
       }
-    } catch (e) {
-      debugPrint('Location error: $e');
+    } catch (_) {}
+
+    // Start listening for updates
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 5,
+      ),
+    ).listen((Position position) {
+      if (mounted) {
+        setState(() => _userLocation = position);
+        // Sync simulation if active
+        ref.read(simulationProvider.notifier).updateLocation(position.latitude, position.longitude);
+      }
+    });
+  }
+
+  Future<bool> _handleLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return false;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) return false;
     }
+    
+    if (permission == LocationPermission.deniedForever) return false;
+    return true;
   }
 
   List<Marker> _buildBusMarkers(List<Bus> buses) {
@@ -85,32 +112,41 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
       return Marker(
         point: LatLng(bus.currentLat!, bus.currentLon!),
-        width: 80,
-        height: 40,
+        width: 100,
+        height: 55,
         child: GestureDetector(
           onTap: () => _onBusTap(bus),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
               color: color,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: color.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4)),
+                BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 4)),
               ],
               border: Border.all(color: Colors.white, width: 2),
             ),
-            child: Row(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.directions_bus, color: Colors.white, size: 16),
-                const SizedBox(width: 4),
-                Flexible(
-                  child: Text(
-                    bus.busName.split('-').last,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.directions_bus, color: Colors.white, size: 14),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        bus.busName.split('-').last,
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Passenger: ${bus.personCount ?? 0}',
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -138,7 +174,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             shape: BoxShape.circle,
             border: Border.all(color: _parseColor(_activeRoute!.routeColor), width: 2),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, spreadRadius: 1),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, spreadRadius: 1),
             ],
           ),
         ),
@@ -156,15 +192,31 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         color: color,
         strokeWidth: 5,
         borderStrokeWidth: 2,
-        borderColor: Colors.white.withOpacity(0.8),
+        borderColor: Colors.white.withValues(alpha: 0.8),
       ),
     ];
   }
 
-  Color _parseColor(String hex) {
-    hex = hex.replaceFirst('#', '');
-    if (hex.length == 6) hex = 'FF$hex';
-    return Color(int.parse(hex, radix: 16));
+  Color _parseColor(String? hex) {
+    if (hex == null || hex.isEmpty) return const Color(0xFF2563EB);
+    try {
+      String cleanHex = hex.replaceFirst('#', '');
+      if (cleanHex.length == 6) cleanHex = 'FF$cleanHex';
+      return Color(int.parse(cleanHex, radix: 16));
+    } catch (_) {
+      return const Color(0xFF2563EB); // Default blue
+    }
+  }
+
+  Color _getMqttColor(MqttConnectionState state) {
+    switch (state) {
+      case MqttConnectionState.connected: return Colors.green;
+      case MqttConnectionState.connecting: return Colors.orange;
+      case MqttConnectionState.disconnecting:
+      case MqttConnectionState.disconnected:
+      case MqttConnectionState.faulted:
+        return Colors.red;
+    }
   }
 
   void _onBusTap(Bus bus) {
@@ -172,7 +224,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final route = routes.where((r) => r.routeId == bus.routeId).firstOrNull;
     setState(() {
       _activeRoute = route;
-      _ridingBus = bus;
       if (bus.currentLat != null && bus.currentLon != null && route != null) {
         _currentStopIndex = calculateBusStopIndex(route, LatLng(bus.currentLat!, bus.currentLon!));
       }
@@ -185,16 +236,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       builder: (context) => _BusDetailsBottomSheet(
         bus: bus,
         busRoute: route,
+        personCount: bus.personCount,
         onRingBell: (mac) async {
           try {
             await _busService.ringBell(mac);
-            if (mounted) {
+            if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Ring signal sent!')),
               );
             }
           } catch (e) {
-            if (mounted) {
+            if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Failed to send ring: ${e.toString()}')),
               );
@@ -254,10 +306,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor.withOpacity(0.95),
+          color: Theme.of(context).cardColor.withValues(alpha: 0.95),
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10)),
           ],
         ),
         child: Column(
@@ -282,7 +334,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: _parseColor(b.routeColor).withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(color: _parseColor(b.routeColor).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                       child: Text(b.routeName, style: TextStyle(color: _parseColor(b.routeColor), fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
                     const SizedBox(width: 12),
@@ -353,6 +405,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final buses = ref.watch(busesProvider);
     final routes = ref.watch(routesProvider);
     final isDark = ref.watch(themeProvider).isDark;
+    final testMode = ref.watch(testModeProvider);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -377,7 +430,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     point: LatLng(_userLocation!.latitude, _userLocation!.longitude),
                     width: 40, height: 40,
                     child: Container(
-                      decoration: BoxDecoration(color: Colors.blue.withOpacity(0.2), shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.2), shape: BoxShape.circle),
                       child: Center(
                         child: Container(
                           width: 14, height: 14,
@@ -399,14 +452,70 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildModernActionBtn(Icons.menu, () => Scaffold.of(context).openDrawer()),
-                _buildModernActionBtn(Icons.refresh, () => ref.read(dataProvider.notifier).refreshBuses()),
+                Row(
+                  children: [
+                    Stack(
+                      children: [
+                        _buildModernActionBtn(Icons.refresh, () => ref.read(dataProvider.notifier).refreshBuses()),
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: Container(
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: _getMqttColor(ref.watch(mqttStatusProvider)),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    _buildModernActionBtn(
+                      testMode.enabled ? Icons.bug_report : Icons.bug_report_outlined,
+                      () {
+                        final wasEnabled = testMode.enabled;
+                        ref.read(testModeProvider.notifier).toggle(
+                              initialLat: _userLocation?.latitude,
+                              initialLon: _userLocation?.longitude,
+                            );
+
+                        // Auto-zoom to simulation start
+                        if (!wasEnabled && _userLocation != null) {
+                          _mapController.move(
+                            LatLng(_userLocation!.latitude, _userLocation!.longitude),
+                            17.0,
+                          );
+                        }
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(wasEnabled
+                                ? 'Test Mode Disabled: Simulation stopped'
+                                : 'Test Mode Enabled: Fake bus spawned at your location'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      },
+                      color: testMode.enabled ? Colors.orange : null,
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
           Positioned(
             right: 16,
-            bottom: _userLocation != null ? 220 : 100,
-            child: _buildModernActionBtn(Icons.my_location, _getUserLocation),
+            bottom: (testMode.enabled || _userLocation != null) ? 220 : 100,
+            child: _buildModernActionBtn(Icons.my_location, () {
+              if (_userLocation != null) {
+                _mapController.move(LatLng(_userLocation!.latitude, _userLocation!.longitude), 17.0);
+              } else {
+                _initLocation();
+              }
+            }),
           ),
           _buildNearbyPanel(routes, buses),
         ],
@@ -414,19 +523,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  Widget _buildModernActionBtn(IconData icon, VoidCallback onTap) {
+  Widget _buildModernActionBtn(IconData icon, VoidCallback onTap, {Color? color}) {
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor.withOpacity(0.9),
+        color: Theme.of(context).cardColor.withValues(alpha: 0.9),
         shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           customBorder: const CircleBorder(),
-          child: Padding(padding: const EdgeInsets.all(12), child: Icon(icon, size: 24)),
+          child: Padding(padding: const EdgeInsets.all(12), child: Icon(icon, size: 24, color: color)),
         ),
       ),
     );
@@ -436,11 +545,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 class _BusDetailsBottomSheet extends StatelessWidget {
   final Bus bus;
   final BusRoute? busRoute;
+  final int? personCount;
   final Function(String) onRingBell;
 
   const _BusDetailsBottomSheet({
     required this.bus,
     this.busRoute,
+    this.personCount,
     required this.onRingBell,
   });
 
@@ -460,12 +571,14 @@ class _BusDetailsBottomSheet extends StatelessWidget {
             if (busRoute != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Text('Route: ${busRoute!.routeName}'),
+                child: Text('Route: ${busRoute!.routeName}', style: const TextStyle(fontWeight: FontWeight.bold)),
               ),
-            Text('PM2.5: ${bus.pm25?.toStringAsFixed(1) ?? "--"}'),
-            Text('Seats Available: ${bus.seatsAvailable ?? "--"}'),
-            Text('Last Updated: ${DateTime.fromMillisecondsSinceEpoch(bus.lastUpdated).toLocal().toString().split('.')[0]}'),
-            const SizedBox(height: 16),
+            const Divider(),
+            _buildInfoRow(Icons.person, 'Passengers', personCount?.toString() ?? 'Waiting for ESP32...'),
+            _buildInfoRow(Icons.air, 'PM2.5', bus.pm25?.toStringAsFixed(1) ?? "--", valueColor: _getPM25Color(bus.pm25)),
+            _buildInfoRow(Icons.event_seat, 'Seats available', bus.seatsAvailable?.toString() ?? "--"),
+            _buildInfoRow(Icons.update, 'Last Updated', DateTime.fromMillisecondsSinceEpoch(bus.lastUpdated).toLocal().toString().split('.')[0]),
+            const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () {
                 onRingBell(bus.busMac);
@@ -478,5 +591,28 @@ class _BusDetailsBottomSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.grey[600]),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+          const Spacer(),
+          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: valueColor)),
+        ],
+      ),
+    );
+  }
+
+  Color? _getPM25Color(double? pm25) {
+    if (pm25 == null) return null;
+    if (pm25 < 12) return Colors.green;
+    if (pm25 < 35.4) return Colors.yellow[700];
+    if (pm25 < 55.4) return Colors.orange;
+    return Colors.red;
   }
 }

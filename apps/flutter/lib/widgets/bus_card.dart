@@ -46,7 +46,7 @@ class BusCard extends StatelessWidget {
                     Container(
                       width: 48, height: 48,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.1),
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(Icons.directions_bus, size: 28,
@@ -60,12 +60,12 @@ class BusCard extends StatelessWidget {
                           Row(
                             children: [
                               Flexible(
-                                child: Text(
-                                  '${bus.busName}${isOffline ? " (Offline)" : ""}',
-                                  style: theme.textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.w600),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                  child: Text(
+                                    '${bus.busName}${bus.busMac == "DEBUG-BUS-01" ? " (Test)" : ""}${isOffline ? " (Offline)" : ""}',
+                                    style: theme.textTheme.titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                               ),
                               if (bus.rssi != null) ...[
                                 const SizedBox(width: 8),
@@ -94,7 +94,7 @@ class BusCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withOpacity(0.08),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Row(
@@ -136,7 +136,7 @@ class BusCard extends StatelessWidget {
                     ],
                     Icon(Icons.people, size: 14, color: Colors.purple[400]),
                     const SizedBox(width: 4),
-                    Text('Passengers: $passengerCount/33',
+                    Text('Passengers: ${bus.personCount ?? passengerCount}/33',
                         style: theme.textTheme.bodySmall),
                   ],
                 ),

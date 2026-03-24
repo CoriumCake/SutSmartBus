@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../providers/data_provider.dart';
 import '../providers/debug_provider.dart';
 import '../models/bus.dart';
@@ -19,9 +18,9 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final buses = ref.watch(busesProvider);
-    final debugMode = ref.watch(debugProvider).debugMode;
-    final theme = Theme.of(context);
+    final List<Bus> buses = ref.watch(busesProvider);
+    final bool debugMode = ref.watch(debugProvider).debugMode;
+    final ThemeData theme = Theme.of(context);
 
     return Scaffold(
       body: Column(
@@ -34,7 +33,7 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                 AirQualityMapWidget(
                   buses: buses,
                   timeRange: _timeRange,
-                  onTimeRangeChanged: (range) => setState(() => _timeRange = range),
+                  onTimeRangeChanged: (String range) => setState(() => _timeRange = range),
                 ),
                 // Debug FAB
                 if (debugMode)
@@ -60,7 +59,7 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                 color: theme.cardColor,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.1),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.1),
                       offset: const Offset(0, -2), blurRadius: 5),
                 ],
               ),
