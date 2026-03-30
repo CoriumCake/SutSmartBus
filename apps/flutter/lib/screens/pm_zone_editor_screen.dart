@@ -161,6 +161,7 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
     );
 
     if (confirm != true) return;
+    if (!mounted) return;
 
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
 

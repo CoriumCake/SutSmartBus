@@ -556,9 +556,9 @@ void setup() {
   config.pin_vsync = VSYNC_GPIO_NUM; config.pin_href = HREF_GPIO_NUM;
   config.pin_sscb_sda = SIOD_GPIO_NUM; config.pin_sscb_scl = SIOC_GPIO_NUM;
   config.pin_pwdn = PWDN_GPIO_NUM; config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 16000000;
+  config.xclk_freq_hz = 20000000; // Increased to 20MHz for higher FPS
   config.pixel_format = PIXFORMAT_GRAYSCALE;
-  config.frame_size = FRAMESIZE_QVGA; // Use QVGA (320x240) to avoid OV2640 144x120 corruption bug
+  config.frame_size = FRAMESIZE_QQVGA; // Switched to QQVGA (160x120) for maximum framerate
   config.jpeg_quality = 12;
   config.fb_count = 1;
 

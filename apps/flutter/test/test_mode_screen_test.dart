@@ -41,7 +41,7 @@ void main() {
 
   // ─── Helper ────────────────────────────────────────────────────────────────
 
-  List<Override> _overrides() => [
+  List<Override> getOverrides() => [
         mqttServiceProvider.overrideWithValue(mockMqtt),
         apiServiceProvider.overrideWithValue(mockApi),
         dataProvider.overrideWith((ref) => mockData),
@@ -58,7 +58,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: _overrides(),
+        overrides: getOverrides(),
         child: const MaterialApp(home: TestingScreen()),
       ),
     );
@@ -146,7 +146,7 @@ void main() {
     testWidgets('disabling test mode resets provider state',
         (tester) async {
       // Use a ProviderContainer to test state directly
-      final container = ProviderContainer(overrides: _overrides());
+      final container = ProviderContainer(overrides: getOverrides());
       addTearDown(container.dispose);
 
       // Read the notifier

@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import '../providers/data_provider.dart';
-import '../providers/debug_provider.dart';
-import '../services/api_service.dart';
 import '../config/api_config.dart';
 
 class DeveloperModeScreen extends ConsumerStatefulWidget {
@@ -99,10 +97,7 @@ class _DeveloperModeScreenState extends ConsumerState<DeveloperModeScreen> {
   @override
   Widget build(BuildContext context) {
     // Security check removed: all users can access Developer Mode
-    final debugState = ref.watch(debugProvider);
-    final isDevMachine = true; // always allow
     
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Developer Mode'),

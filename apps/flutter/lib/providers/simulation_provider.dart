@@ -62,55 +62,55 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
     final busId = 'DEBUG-BUS-01';
     state = state.copyWith(isSimulating: true, simulatingBusId: busId);
     
-    final sendUpdate = () async {
-      final personCount = _personCount;
-      final lat = _lastLat != 0 ? _lastLat : 14.8816;
-      final lon = _lastLon != 0 ? _lastLon : 102.0207;
-
-      final payload = {
-        'bus_mac': 'DEBUG-MAC-01',
-        'bus_name': 'Debug Simulator 1',
-        'current_lat': lat,
-        'current_lon': lon,
-        'person_count': personCount,
-        'seats_available': _random.nextInt(40),
-        'pm2_5': 15.0 + _random.nextDouble() * 10,
-        'pm10': 30.0 + _random.nextDouble() * 20,
-        'temp': 28.0 + _random.nextDouble() * 5,
-        'hum': 60.0 + _random.nextDouble() * 20,
-        'is_online': true,
-        'last_updated': DateTime.now().toIso8601String(),
-      };
-
-      await _api.sendFakeLocation(payload);
-      
-      final injectedBus = Bus(
-            id: 'DEBUG-MAC-01',
-            busMac: 'DEBUG-MAC-01',
-            busName: '(Test) Debug Simulator 1',
-            currentLat: lat,
-            currentLon: lon,
-            personCount: personCount,
-            seatsAvailable: payload['seats_available'] as int,
-            pm25: payload['pm2_5'] as double,
-            pm10: payload['pm10'] as double,
-            temp: payload['temp'] as double,
-            hum: payload['hum'] as double,
-            isOnline: true,
-            lastUpdated: DateTime.now().millisecondsSinceEpoch,
-            isFake: true,
-          );
-
-      _ref.read(dataProvider.notifier).updateBusLocally(injectedBus);
-      _ref.read(dataProvider.notifier).refreshBuses();
-    };
-
     // Send first update immediately
-    sendUpdate();
+    _sendUpdate();
 
     _simTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
-      await sendUpdate();
+      await _sendUpdate();
     });
+  }
+
+  Future<void> _sendUpdate() async {
+    final personCount = _personCount;
+    final lat = _lastLat != 0 ? _lastLat : 14.8816;
+    final lon = _lastLon != 0 ? _lastLon : 102.0207;
+
+    final payload = {
+      'bus_mac': 'DEBUG-MAC-01',
+      'bus_name': 'Debug Simulator 1',
+      'current_lat': lat,
+      'current_lon': lon,
+      'person_count': personCount,
+      'seats_available': _random.nextInt(40),
+      'pm2_5': 15.0 + _random.nextDouble() * 10,
+      'pm10': 30.0 + _random.nextDouble() * 20,
+      'temp': 28.0 + _random.nextDouble() * 5,
+      'hum': 60.0 + _random.nextDouble() * 20,
+      'is_online': true,
+      'last_updated': DateTime.now().toIso8601String(),
+    };
+
+    await _api.sendFakeLocation(payload);
+    
+    final injectedBus = Bus(
+          id: 'DEBUG-MAC-01',
+          busMac: 'DEBUG-MAC-01',
+          busName: '(Test) Debug Simulator 1',
+          currentLat: lat,
+          currentLon: lon,
+          personCount: personCount,
+          seatsAvailable: payload['seats_available'] as int,
+          pm25: payload['pm2_5'] as double,
+          pm10: payload['pm10'] as double,
+          temp: payload['temp'] as double,
+          hum: payload['hum'] as double,
+          isOnline: true,
+          lastUpdated: DateTime.now().millisecondsSinceEpoch,
+          isFake: true,
+        );
+
+    _ref.read(dataProvider.notifier).updateBusLocally(injectedBus);
+    _ref.read(dataProvider.notifier).refreshBuses();
   }
 
   void _stopSimulation() async {

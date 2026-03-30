@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
+import '../models/waypoint.dart';
 import '../services/api_service.dart';
 import '../services/mqtt_service.dart';
 
@@ -52,7 +53,22 @@ class DataNotifier extends StateNotifier<DataState> {
       state = state.copyWith(loading: true);
 
       // 1. Fetch routes
-      final routes = await _api.fetchRoutes();
+      var routes = await _api.fetchRoutes();
+      if (routes.isEmpty) {
+        // Local fallback for offline testing (SUT Green Route)
+        routes = [
+          BusRoute(
+            routeId: 'local-01',
+            routeName: 'SUT Shuttle (Local)',
+            routeColor: '#2563EB',
+            waypoints: [
+              Waypoint(latitude: 14.8816, longitude: 102.0207, isStop: true, stopName: 'Main Gate'),
+              Waypoint(latitude: 14.8780, longitude: 102.0180, isStop: true, stopName: 'Library'),
+              Waypoint(latitude: 14.8720, longitude: 102.0150, isStop: true, stopName: 'Dormitory'),
+            ],
+          )
+        ];
+      }
       state = state.copyWith(routes: routes);
 
       // 2. Fetch buses
