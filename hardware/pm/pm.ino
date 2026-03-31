@@ -1,7 +1,4 @@
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <WebSocketsClient.h>
-#include <WebSocketStreamClient.h>
 #include <PubSubClient.h>
 #include <HTTPUpdate.h>  // For HTTP-based OTA updates
 #include <TinyGPS++.h>
@@ -24,10 +21,8 @@ String otaVersion = "";
 // ... (rest of configuration stays the same) ...
 
 // ================= OBJECTS =================
-WiFiClientSecure sslClient;
-WebSocketsClient wsClient;
-WebSocketStreamClient wsStreamClient(wsClient, "/mqtt"); 
-PubSubClient client(wsStreamClient);
+WiFiClient espClient;
+PubSubClient client(espClient);
 StaticJsonDocument<512> doc;
 WebServer server(80);
 RTC_DS3231 rtc;
@@ -93,10 +88,8 @@ void setup() {
   MDNS.begin(web_name);
   WiFi.macAddress().toCharArray(bus_mac, sizeof(bus_mac));
 
-  // --- WebSocket & MQTT Setup ---
-  sslClient.setInsecure(); // Cloudflare SSL
-  wsClient.beginSSL(MQTT_SERVER, 443, "/mqtt"); // Tunnels use 443
-  client.setServer(MQTT_SERVER, 443); 
+  // --- MQTT Setup ---
+  client.setServer(MQTT_SERVER, MQTT_PORT); 
   client.setCallback(mqttCallback); 
   client.setBufferSize(512);
  

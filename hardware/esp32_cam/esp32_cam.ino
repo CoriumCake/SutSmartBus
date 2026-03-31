@@ -729,21 +729,22 @@ void reconnectMQTT() {
   lastMqttAttempt = millis();
 
   const char* mqttHost = mqttServers[currentMqttIndex].host;
+  int mqttPort = mqttServers[currentMqttIndex].port;
   if (strlen(mqttHost) == 0) {
     currentMqttIndex = (currentMqttIndex + 1) % mqttServerCount;
     lastMqttAttempt = millis() - 5000; // retry immediately
     return;
   }
 
-  // Build wss:// URI for PsychicMqttClient
+  // Build mqtt:// URI for PsychicMqttClient (Standard MQTT)
   char uri[128];
-  snprintf(uri, sizeof(uri), "wss://%s:443/mqtt", mqttHost);
+  snprintf(uri, sizeof(uri), "mqtt://%s:%d", mqttHost, mqttPort);
   
   Serial.printf("🔌 MQTT trying: %s\n", uri);
 
   mqttClient.setServer(uri);
   mqttClient.setClientId(MQTT_CLIENT_ID);
-  mqttClient.attachArduinoCACertBundle(true);
+  // Removed SSL certificate attachment for standard MQTT
   mqttClient.connect(); 
   // Note: connect() is void, status handled by onConnect callback
 }

@@ -82,8 +82,10 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017/sut_smart_bus
       - TZ=Asia/Bangkok
       # Production settings (uncomment and configure):
-      - API_SECRET_KEY=10a03d0e99aa13e2a3b89c85f5136ee35b5681d47ed30242f9f015e911f73bc8
+      # - API_SECRET_KEY=10a03d0e99aa13e2a3b89c85f5136ee35b5681d47ed30242f9f015e911f73bc8
       - CORS_ORIGINS=https://catcode.tech
+      - CORS_ORIGINS=*
+
     volumes:
       - ./server/firmware:/app/firmware
       - ./server/routes:/app/routes

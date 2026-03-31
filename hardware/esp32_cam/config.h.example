@@ -43,13 +43,13 @@
 // MQTT Broker Configuration
 // ============================================
 
-// Primary MQTT server - use Cloudflare Tunnel URL for WSS
-#define MQTT_SERVER        "mqtt.catcode.tech"
-#define MQTT_PORT          443 // Use 443 for WSS over Cloudflare Tunnel
+// Primary MQTT server
+#define MQTT_SERVER        "your_mqtt_host"
+#define MQTT_PORT          1883 // Standard MQTT port
 
 // Backup MQTT server (optional)
 #define MQTT_SERVER_BACKUP ""
-#define MQTT_PORT_BACKUP   1883 // Original port for backup, if different
+#define MQTT_PORT_BACKUP   1883 // Standard MQTT port for backup
 
 // MQTT Topics (usually don't need to change)
 #define MQTT_TOPIC_DETECTION    "bus/door/count"
