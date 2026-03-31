@@ -32,6 +32,7 @@ class ApiConfig {
       if (Platform.isAndroid && (host == 'localhost' || host == '127.0.0.1')) {
         host = '10.0.2.2';
       }
+      return 'mqtt://$host:${Env.mqttBrokerPort}';
     }
     
     return 'ws://$host:${Env.mqttWebSocketPort}';

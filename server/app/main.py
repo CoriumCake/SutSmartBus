@@ -74,13 +74,22 @@ app = FastAPI(
 app.add_middleware(APIKeyMiddleware)
 
 cors_origins = settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS != "*" else ["*"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if "*" in cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=".*", # This acts like a wildcard but reflects the request origin
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
