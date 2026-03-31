@@ -13,7 +13,7 @@ import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../utils/map_utils.dart';
 import '../providers/simulation_provider.dart';
-import 'package:mqtt_client/mqtt_client.dart';
+
 
 class IncomingBus {
   final Bus bus;
@@ -208,16 +208,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Color _getMqttColor(MqttConnectionState state) {
-    switch (state) {
-      case MqttConnectionState.connected: return Colors.green;
-      case MqttConnectionState.connecting: return Colors.orange;
-      case MqttConnectionState.disconnecting:
-      case MqttConnectionState.disconnected:
-      case MqttConnectionState.faulted:
-        return Colors.red;
-    }
-  }
+
 
   void _onBusTap(Bus bus) {
     final routes = ref.read(routesProvider);
@@ -407,6 +398,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final isDark = ref.watch(themeProvider).isDark;
     final testMode = ref.watch(testModeProvider);
 
+    bool showPanel = false;
+    if (_userLocation != null && routes.isNotEmpty) {
+      final allStops = routes.expand((r) => r.stops).toList();
+      final nearest = findNearestStop(LatLng(_userLocation!.latitude, _userLocation!.longitude), allStops);
+      if (nearest != null && nearest.distance <= 800) {
+        showPanel = true;
+      }
+    }
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       body: Stack(
@@ -451,28 +451,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildModernActionBtn(Icons.menu, () => Scaffold.of(context).openDrawer()),
+
                 Row(
                   children: [
-                    Stack(
-                      children: [
-                        _buildModernActionBtn(Icons.refresh, () => ref.read(dataProvider.notifier).refreshBuses()),
-                        Positioned(
-                          right: 4,
-                          top: 4,
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: _getMqttColor(ref.watch(mqttStatusProvider)),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 8),
+
                     _buildModernActionBtn(
                       testMode.enabled ? Icons.bug_report : Icons.bug_report_outlined,
                       () {
@@ -508,7 +490,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
           Positioned(
             right: 16,
-            bottom: (testMode.enabled || _userLocation != null) ? 220 : 100,
+            bottom: showPanel ? 230 : 32,
             child: _buildModernActionBtn(Icons.my_location, () {
               if (_userLocation != null) {
                 _mapController.move(LatLng(_userLocation!.latitude, _userLocation!.longitude), 17.0);
