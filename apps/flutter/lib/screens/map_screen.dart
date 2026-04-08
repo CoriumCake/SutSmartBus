@@ -83,9 +83,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
     ).listen((Position position) {
       if (mounted) {
-        setState(() => _userLocation = position);
-        // Sync simulation if active
-        ref.read(simulationProvider.notifier).updateLocation(position.latitude, position.longitude);
+        if (!ref.read(testModeProvider).enabled) {
+          setState(() => _userLocation = position);
+        }
       }
     });
   }
@@ -156,45 +156,47 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }).toList();
   }
 
-  List<Marker> _buildStopMarkers() {
-    if (_activeRoute == null) return [];
+  List<Marker> _buildStopMarkers(List<BusRoute> allRoutes) {
+    final routesToShow = _activeRoute != null ? [_activeRoute!] : allRoutes;
 
-    return _activeRoute!.stops.asMap().entries.map((entry) {
-      final i = entry.key;
-      final stop = entry.value;
-      final isNext = i == _currentStopIndex;
+    return routesToShow.expand((route) {
+      return route.stops.asMap().entries.map((entry) {
+        final i = entry.key;
+        final stop = entry.value;
+        final isNext = _activeRoute != null && route.routeId == _activeRoute!.routeId && i == _currentStopIndex;
 
-      return Marker(
-        point: LatLng(stop.latitude, stop.longitude),
-        width: 12,
-        height: 12,
-        child: Container(
-          decoration: BoxDecoration(
-            color: isNext ? Colors.green : Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: _parseColor(_activeRoute!.routeColor), width: 2),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, spreadRadius: 1),
-            ],
+        return Marker(
+          point: LatLng(stop.latitude, stop.longitude),
+          width: 12,
+          height: 12,
+          child: Container(
+            decoration: BoxDecoration(
+              color: isNext ? Colors.green : Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: _parseColor(route.routeColor), width: 2),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, spreadRadius: 1),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      });
     }).toList();
   }
 
-  List<Polyline> _buildRoutePolylines() {
-    if (_activeRoute == null) return [];
-    final color = _parseColor(_activeRoute!.routeColor);
+  List<Polyline> _buildRoutePolylines(List<BusRoute> allRoutes) {
+    final routesToShow = _activeRoute != null ? [_activeRoute!] : allRoutes;
     
-    return [
-      Polyline(
-        points: _activeRoute!.waypoints.map((w) => LatLng(w.latitude, w.longitude)).toList(),
+    return routesToShow.map((route) {
+      final color = _parseColor(route.routeColor);
+      return Polyline(
+        points: route.waypoints.map((w) => LatLng(w.latitude, w.longitude)).toList(),
         color: color,
         strokeWidth: 5,
         borderStrokeWidth: 2,
         borderColor: Colors.white.withValues(alpha: 0.8),
-      ),
-    ];
+      );
+    }).toList();
   }
 
   Color _parseColor(String? hex) {
@@ -413,7 +415,44 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(initialCenter: _sutCenter, initialZoom: 15.5),
+            options: MapOptions(
+              initialCenter: _sutCenter, 
+              initialZoom: 15.5,
+              onTap: (tapPosition, point) {
+                if (testMode.enabled) {
+                  ref.read(simulationProvider.notifier).updateLocation(point.latitude, point.longitude);
+                  setState(() {
+                    _userLocation = Position(
+                      latitude: point.latitude,
+                      longitude: point.longitude,
+                      timestamp: DateTime.now(),
+                      accuracy: 100, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+                    );
+                  });
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Spoofed User & Test Bus Location!'), duration: Duration(milliseconds: 500)),
+                  );
+                }
+              },
+              onLongPress: (tapPosition, point) {
+                if (testMode.enabled) {
+                  ref.read(simulationProvider.notifier).updateLocation(point.latitude, point.longitude);
+                  setState(() {
+                    _userLocation = Position(
+                      latitude: point.latitude,
+                      longitude: point.longitude,
+                      timestamp: DateTime.now(),
+                      accuracy: 100, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+                    );
+                  });
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Spoofed User & Test Bus Location!'), duration: Duration(milliseconds: 500)),
+                  );
+                }
+              },
+            ),
             children: [
               TileLayer(
                 urlTemplate: isDark 
@@ -423,23 +462,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 userAgentPackageName: 'com.catcode.sut_smart_bus',
                 retinaMode: RetinaMode.isHighDensity(context),
               ),
-              PolylineLayer(polylines: _buildRoutePolylines()),
+              PolylineLayer(polylines: _buildRoutePolylines(routes)),
               MarkerLayer(markers: [
                 if (_userLocation != null)
                   Marker(
                     point: LatLng(_userLocation!.latitude, _userLocation!.longitude),
                     width: 40, height: 40,
                     child: Container(
-                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.2), shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: testMode.enabled ? Colors.deepPurple.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.2), 
+                        shape: BoxShape.circle
+                      ),
                       child: Center(
                         child: Container(
                           width: 14, height: 14,
-                          decoration: BoxDecoration(color: Colors.blue, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                          decoration: BoxDecoration(
+                            color: testMode.enabled ? Colors.deepPurple : Colors.blue, 
+                            shape: BoxShape.circle, 
+                            border: Border.all(color: Colors.white, width: 2)
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ..._buildStopMarkers(),
+                ..._buildStopMarkers(routes),
                 ..._buildBusMarkers(buses),
               ]),
             ],
