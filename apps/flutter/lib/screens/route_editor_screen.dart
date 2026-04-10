@@ -140,13 +140,13 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
                 polylines: [
                   Polyline(
                     points: _waypoints.map((w) => LatLng(w.latitude, w.longitude)).toList(),
-                    color: _parseColor(_routeColor),
+                    color: _parseColor(_routeColor).withValues(alpha: 0.1),
                     strokeWidth: 4,
                   ),
                 ],
               ),
               MarkerLayer(
-                markers: _waypoints.asMap().entries.map((entry) {
+                markers: _waypoints.asMap().entries.where((e) => e.value.isStop || _selectedIndex == e.key).map((entry) {
                   final i = entry.key;
                   final wp = entry.value;
                   final isSelected = _selectedIndex == i;
@@ -160,11 +160,11 @@ class _RouteEditorScreenState extends ConsumerState<RouteEditorScreen> {
                       onLongPress: () => _removeWaypoint(i),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: wp.isStop ? Colors.red : Colors.blue,
+                          color: wp.isStop ? Colors.red : Colors.blue.withValues(alpha: 0.3),
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: isSelected ? Colors.yellow : Colors.white,
-                            width: isSelected ? 3 : 2,
+                            color: isSelected ? Colors.yellow : (wp.isStop ? Colors.white : Colors.white.withValues(alpha: 0.3)),
+                            width: isSelected ? 3 : 1.5,
                           ),
                         ),
                         child: wp.isStop 

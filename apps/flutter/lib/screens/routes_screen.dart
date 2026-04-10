@@ -9,6 +9,10 @@ import '../models/route_model.dart';
 import '../services/route_storage_service.dart';
 import '../services/bus_mapping_service.dart';
 import '../utils/route_helpers.dart';
+import '../models/waypoint.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
+import 'dart:io';
 import '../widgets/bus_card.dart';
 
 class RoutesScreen extends ConsumerStatefulWidget {
@@ -66,6 +70,90 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
     if (mounted) setState(() => _busRoutes = routeMap);
   }
 
+  Future<void> _importWaypoints() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+      if (result == null || result.files.isEmpty) return;
+      
+      final file = result.files.single;
+      String content = '';
+      if (file.bytes != null) {
+        content = utf8.decode(file.bytes!);
+      } else if (file.path != null) {
+        content = await File(file.path!).readAsString();
+      } else {
+        return;
+      }
+
+      final dynamic decoded = jsonDecode(content);
+      List<dynamic> jsonList = [];
+      String suggestedName = '';
+
+      if (decoded is List) {
+        jsonList = decoded;
+      } else if (decoded is Map<String, dynamic>) {
+        if (decoded.containsKey('waypoints') && decoded['waypoints'] is List) {
+          jsonList = decoded['waypoints'] as List;
+        }
+        if (decoded.containsKey('routeName')) {
+          suggestedName = decoded['routeName'].toString();
+        } else if (decoded.containsKey('name')) {
+          suggestedName = decoded['name'].toString();
+        }
+      } else {
+        throw Exception('Invalid JSON format. Expected a list of waypoints or a route object.');
+      }
+
+      final waypoints = jsonList.map((j) => Waypoint.fromJson(j as Map<String, dynamic>)).toList();
+
+      if (waypoints.isNotEmpty && mounted) {
+        final nameController = TextEditingController(text: suggestedName);
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Import Route'),
+            content: TextField(
+              controller: nameController,
+              decoration: const InputDecoration(labelText: 'Route Name'),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed == true && nameController.text.isNotEmpty) {
+          final newRoute = BusRoute(
+            routeId: DateTime.now().millisecondsSinceEpoch.toString(),
+            routeName: nameController.text,
+            waypoints: waypoints,
+          );
+          final storage = RouteStorageService();
+          await storage.saveRoute(newRoute);
+          await _loadLocalRoutes();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Imported ${waypoints.length} waypoints')),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to import: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _onRefresh() async {
     await ref.read(dataProvider.notifier).refreshBuses();
     await _fetchPassengerCount();
@@ -103,9 +191,19 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
                 Text(t('routes'),
                     style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
                 if (debugMode)
-                  IconButton(
-                    icon: Icon(Icons.add_circle, color: theme.colorScheme.primary, size: 28),
-                    onPressed: () => context.push('/route-editor'),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.file_upload, color: theme.colorScheme.primary, size: 28),
+                        tooltip: 'Import Waypoints',
+                        onPressed: _importWaypoints,
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.add_circle, color: theme.colorScheme.primary, size: 28),
+                        onPressed: () => context.push('/route-editor'),
+                      ),
+                    ],
                   ),
               ],
             ),

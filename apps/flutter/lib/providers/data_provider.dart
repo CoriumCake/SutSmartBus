@@ -6,6 +6,7 @@ import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../services/api_service.dart';
 import '../services/mqtt_service.dart';
+import '../services/route_storage_service.dart';
 
 class DataState {
   final List<Bus> buses;
@@ -53,7 +54,15 @@ class DataNotifier extends StateNotifier<DataState> {
       state = state.copyWith(loading: true);
 
       // 1. Fetch routes
-      var routes = await _api.fetchRoutes();
+      var apiRoutes = await _api.fetchRoutes();
+      var localRoutes = await RouteStorageService().getAllRoutes();
+      
+      final Map<String, BusRoute> routeMap = {};
+      for (var r in apiRoutes) routeMap[r.routeId] = r;
+      for (var r in localRoutes) routeMap[r.routeId] = r;
+      
+      var routes = routeMap.values.toList();
+
       if (routes.isEmpty) {
         // Local fallback for offline testing (SUT Green Route)
         routes = [
