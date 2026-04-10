@@ -12,9 +12,7 @@ async def dashboard():
     try:
         with sqlite3.connect(settings.DB_FILE) as conn:
             cursor = conn.cursor()
-            # Ensure tables exist (just in case)
-            conn.execute("CREATE TABLE IF NOT EXISTS counts (time TEXT, direction TEXT, total INTEGER)")
-            cursor.execute("SELECT * FROM counts ORDER BY time DESC LIMIT 20")
+            cursor.execute("SELECT bus_mac, count, timestamp FROM passenger_history ORDER BY timestamp DESC LIMIT 20")
             recent = cursor.fetchall()
     except Exception as e:
         print(f"DB Error: {e}")
@@ -22,11 +20,10 @@ async def dashboard():
 
     rows_html = ""
     for row in recent:
-        timestamp, direction, total = row
-        css_class = 'enter' if direction == 'enter' else 'exit'
+        mac, count, timestamp = row
         rows_html += f"""
-            <tr class="{css_class}">
-                <td>{timestamp}</td><td>{direction.upper()}</td><td>{total}</td>
+            <tr>
+                <td>{timestamp}</td><td>{mac}</td><td>{count}</td>
             </tr>
         """
 
@@ -67,7 +64,7 @@ async def dashboard():
 
         <table>
             <thead>
-                <tr><th>Timestamp</th><th>Activity</th><th>Cumulative</th></tr>
+                <tr><th>Timestamp</th><th>Bus MAC</th><th>Current Count</th></tr>
             </thead>
             <tbody>
                 {rows_html}

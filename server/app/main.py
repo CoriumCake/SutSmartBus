@@ -19,7 +19,16 @@ from core.auth import APIKeyMiddleware
 def init_sqlite():
     """Ensure the local passenger counting database exists."""
     with sqlite3.connect(settings.DB_FILE) as conn:
-        conn.execute("CREATE TABLE IF NOT EXISTS counts (time TEXT, direction TEXT, total INTEGER)")
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS passenger_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                bus_mac TEXT, 
+                count INTEGER, 
+                timestamp DATETIME, 
+                lat REAL, 
+                lon REAL
+            )
+        ''')
         conn.commit()
     print(f"[OK] SQLite Database Initialized ({settings.DB_FILE})")
 

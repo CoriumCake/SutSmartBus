@@ -3,13 +3,27 @@ Air Quality Analytics Module
 Provides endpoints for air quality data analysis and visualization.
 """
 
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from . import crud
 from .database import db
+from core.config import settings
 
 # Get hardware locations collection
 hardware_location_collection = db.get_collection("hardware_locations")
+
+def record_passenger_count(bus_mac: str, count: int, lat: float = 0.0, lon: float = 0.0):
+    """Log passenger count to SQLite history for local analytics."""
+    try:
+        with sqlite3.connect(settings.DB_FILE) as conn:
+            conn.execute(
+                "INSERT INTO passenger_history (bus_mac, count, timestamp, lat, lon) VALUES (?, ?, ?, ?, ?)",
+                (bus_mac, count, datetime.now(timezone.utc).isoformat(), lat, lon)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"Error recording passenger count: {e}")
 
 
 async def get_zone_heatmap_data(hours: int = 24, grid_size: float = 0.001, bus_mac: Optional[str] = None):

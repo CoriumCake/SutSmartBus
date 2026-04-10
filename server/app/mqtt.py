@@ -120,25 +120,22 @@ def on_message(client, userdata, msg):
         if msg.topic == constants.TOPIC_BUS_DOOR_COUNT:
             try:
                 data = json.loads(payload_str)
-                timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+                bus_mac = data.get('bus_mac', constants.BUS_MAC_MOCK)
+                current_passengers = data.get('count', 0)
                 
-                # Store in SQLite
-                with sqlite3.connect(settings.DB_FILE) as conn:
-                    conn.execute("INSERT INTO counts VALUES (?, ?, ?)", 
-                                 (timestamp, data.get('dir'), data.get('count')))
-                    conn.commit()
+                # Store in SQLite history
+                from .analytics import record_passenger_count
+                record_passenger_count(bus_mac, current_passengers)
                 
                 # Update global count in shared state
                 with state.state.passenger_lock:
-                    state.state.current_passengers = data.get('count', state.state.current_passengers)
+                    state.state.current_passengers = current_passengers
                 
-                print(f"[{timestamp}] Door Event - Total Passengers: {state.state.current_passengers}")
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Door Event - Bus {bus_mac}: {current_passengers} pax")
                 
                 # Sync with Seats in MongoDB
                 if state.state.main_loop:
-                    bus_mac = data.get('bus_mac', constants.BUS_MAC_MOCK)
                     async def sync_seats(mac):
-                        current_passengers = state.state.current_passengers
                         seats_available = max(0, constants.TOTAL_SEATS - current_passengers)
                         await crud.update_bus_location(
                             mac_address=mac, lat=None, lon=None,
@@ -149,7 +146,6 @@ def on_message(client, userdata, msg):
                         updated_bus = await crud.get_bus_by_mac(mac)
                         if updated_bus:
                              app_payload = updated_bus.dict()
-                             # Add extra debug log
                              print(f"📡 Broadcasting to app: passengers={current_passengers}, seats={seats_available}")
                              client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
                     

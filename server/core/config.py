@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Security Settings
     # If set, all API requests must include X-API-Key header
     API_SECRET_KEY: Optional[str] = None
+    ADMIN_PASSWORD: str = "admin123"
     
     # Maximum firmware file size (2MB default - ESP32 typically < 1.5MB)
     MAX_UPLOAD_SIZE: int = 2 * 1024 * 1024  # 2MB in bytes
