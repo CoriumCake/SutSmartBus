@@ -75,6 +75,13 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
     final lat = _lastLat != 0 ? _lastLat : 14.8816;
     final lon = _lastLon != 0 ? _lastLon : 102.0207;
 
+<<<<<<< Updated upstream
+=======
+    // Attach simulation bus to the first available route for Next Stop testing
+    final routes = _ref.read(routesProvider);
+    final testRouteId = routes.isNotEmpty ? routes.first.routeId : null;
+
+>>>>>>> Stashed changes
     final payload = {
       'bus_mac': 'DEBUG-MAC-01',
       'bus_name': 'Debug Simulator 1',
@@ -87,6 +94,10 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
       'temp': 28.0 + _random.nextDouble() * 5,
       'hum': 60.0 + _random.nextDouble() * 20,
       'is_online': true,
+<<<<<<< Updated upstream
+=======
+      'route_id': testRouteId,
+>>>>>>> Stashed changes
       'last_updated': DateTime.now().toIso8601String(),
     };
 
@@ -105,6 +116,10 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
           temp: payload['temp'] as double,
           hum: payload['hum'] as double,
           isOnline: true,
+<<<<<<< Updated upstream
+=======
+          routeId: testRouteId,
+>>>>>>> Stashed changes
           lastUpdated: DateTime.now().millisecondsSinceEpoch,
           isFake: true,
         );
