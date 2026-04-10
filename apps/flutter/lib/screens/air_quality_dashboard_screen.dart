@@ -204,7 +204,7 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
           child: Icon(Icons.sensors, color: color),
         ),
         title: Text(bus.busName, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('Last update: ${bus.isOffline ? "Offline" : "Just now"}'),
+        subtitle: Text('Status: ${bus.isOffline ? "Offline" : "Online"}'),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,

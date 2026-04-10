@@ -116,6 +116,15 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                             color: Colors.grey, borderRadius: BorderRadius.circular(15)),
                           child: const Text('OFFLINE',
                               style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        )
+                      else
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          margin: const EdgeInsets.only(right: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.green, borderRadius: BorderRadius.circular(15)),
+                          child: const Text('ONLINE',
+                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

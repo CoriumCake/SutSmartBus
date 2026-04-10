@@ -61,7 +61,7 @@ class BusCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${bus.busName}${bus.busMac == "DEBUG-BUS-01" ? " (Test)" : ""}${isOffline ? " (Offline)" : ""}',
+                            '${bus.busName}${bus.busMac == "DEBUG-BUS-01" ? " (Test)" : ""}${isOffline ? " (Offline)" : " (Online)"}',
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w800,

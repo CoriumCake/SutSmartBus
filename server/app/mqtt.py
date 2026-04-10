@@ -166,8 +166,14 @@ def on_message(client, userdata, msg):
 
         # 2. Handle GPS/Status
         payload = json.loads(payload_str)
+        
+        # TESTING MODE: If bus_mac is missing, assume it's our testing ESP32
         bus_mac = payload.get("bus_mac")
-        if not bus_mac: return
+        if not bus_mac:
+            bus_mac = constants.BUS_MAC_MOCK
+            print(f"⚠️ NO MAC in payload. Defaulting to: {bus_mac}")
+        
+        print(f"📥 Device MSG: {bus_mac} | Topic: {msg.topic}")
 
         bus_name = payload.get("bus_name", "").strip() or None
         lat = payload.get("lat")
@@ -221,7 +227,8 @@ def on_message(client, userdata, msg):
                 client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
 
     except Exception as e:
-        print(f"Error in on_message: {e}")
+        print(f"Error in on_message (topic={msg.topic}): {e}")
+        print(f"Payload was: {msg.payload.decode() if msg.payload else 'EMPTY'}")
 
 # Configure Client
 client = mqtt.Client(client_id="sut-server", clean_session=True)
