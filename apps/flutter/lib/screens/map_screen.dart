@@ -13,7 +13,7 @@ import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../utils/map_utils.dart';
 import '../providers/simulation_provider.dart';
-import 'package:mqtt_client/mqtt_client.dart';
+
 
 class IncomingBus {
   final Bus bus;
@@ -83,9 +83,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
     ).listen((Position position) {
       if (mounted) {
-        setState(() => _userLocation = position);
-        // Sync simulation if active
-        ref.read(simulationProvider.notifier).updateLocation(position.latitude, position.longitude);
+        if (!ref.read(testModeProvider).enabled) {
+          setState(() => _userLocation = position);
+        }
       }
     });
   }
@@ -156,45 +156,47 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }).toList();
   }
 
-  List<Marker> _buildStopMarkers() {
-    if (_activeRoute == null) return [];
+  List<Marker> _buildStopMarkers(List<BusRoute> allRoutes) {
+    final routesToShow = _activeRoute != null ? [_activeRoute!] : allRoutes;
 
-    return _activeRoute!.stops.asMap().entries.map((entry) {
-      final i = entry.key;
-      final stop = entry.value;
-      final isNext = i == _currentStopIndex;
+    return routesToShow.expand((route) {
+      return route.stops.asMap().entries.map((entry) {
+        final i = entry.key;
+        final stop = entry.value;
+        final isNext = _activeRoute != null && route.routeId == _activeRoute!.routeId && i == _currentStopIndex;
 
-      return Marker(
-        point: LatLng(stop.latitude, stop.longitude),
-        width: 12,
-        height: 12,
-        child: Container(
-          decoration: BoxDecoration(
-            color: isNext ? Colors.green : Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: _parseColor(_activeRoute!.routeColor), width: 2),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, spreadRadius: 1),
-            ],
+        return Marker(
+          point: LatLng(stop.latitude, stop.longitude),
+          width: 12,
+          height: 12,
+          child: Container(
+            decoration: BoxDecoration(
+              color: isNext ? Colors.green : Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: _parseColor(route.routeColor), width: 2),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, spreadRadius: 1),
+              ],
+            ),
           ),
-        ),
-      );
+        );
+      });
     }).toList();
   }
 
-  List<Polyline> _buildRoutePolylines() {
-    if (_activeRoute == null) return [];
-    final color = _parseColor(_activeRoute!.routeColor);
+  List<Polyline> _buildRoutePolylines(List<BusRoute> allRoutes) {
+    final routesToShow = _activeRoute != null ? [_activeRoute!] : allRoutes;
     
-    return [
-      Polyline(
-        points: _activeRoute!.waypoints.map((w) => LatLng(w.latitude, w.longitude)).toList(),
+    return routesToShow.map((route) {
+      final color = _parseColor(route.routeColor);
+      return Polyline(
+        points: route.waypoints.map((w) => LatLng(w.latitude, w.longitude)).toList(),
         color: color,
         strokeWidth: 5,
         borderStrokeWidth: 2,
         borderColor: Colors.white.withValues(alpha: 0.8),
-      ),
-    ];
+      );
+    }).toList();
   }
 
   Color _parseColor(String? hex) {
@@ -208,16 +210,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-  Color _getMqttColor(MqttConnectionState state) {
-    switch (state) {
-      case MqttConnectionState.connected: return Colors.green;
-      case MqttConnectionState.connecting: return Colors.orange;
-      case MqttConnectionState.disconnecting:
-      case MqttConnectionState.disconnected:
-      case MqttConnectionState.faulted:
-        return Colors.red;
-    }
-  }
+
 
   void _onBusTap(Bus bus) {
     final routes = ref.read(routesProvider);
@@ -407,13 +400,59 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final isDark = ref.watch(themeProvider).isDark;
     final testMode = ref.watch(testModeProvider);
 
+    bool showPanel = false;
+    if (_userLocation != null && routes.isNotEmpty) {
+      final allStops = routes.expand((r) => r.stops).toList();
+      final nearest = findNearestStop(LatLng(_userLocation!.latitude, _userLocation!.longitude), allStops);
+      if (nearest != null && nearest.distance <= 800) {
+        showPanel = true;
+      }
+    }
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
           FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(initialCenter: _sutCenter, initialZoom: 15.5),
+            options: MapOptions(
+              initialCenter: _sutCenter, 
+              initialZoom: 15.5,
+              onTap: (tapPosition, point) {
+                if (testMode.enabled) {
+                  ref.read(simulationProvider.notifier).updateLocation(point.latitude, point.longitude);
+                  setState(() {
+                    _userLocation = Position(
+                      latitude: point.latitude,
+                      longitude: point.longitude,
+                      timestamp: DateTime.now(),
+                      accuracy: 100, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+                    );
+                  });
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Spoofed User & Test Bus Location!'), duration: Duration(milliseconds: 500)),
+                  );
+                }
+              },
+              onLongPress: (tapPosition, point) {
+                if (testMode.enabled) {
+                  ref.read(simulationProvider.notifier).updateLocation(point.latitude, point.longitude);
+                  setState(() {
+                    _userLocation = Position(
+                      latitude: point.latitude,
+                      longitude: point.longitude,
+                      timestamp: DateTime.now(),
+                      accuracy: 100, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+                    );
+                  });
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Spoofed User & Test Bus Location!'), duration: Duration(milliseconds: 500)),
+                  );
+                }
+              },
+            ),
             children: [
               TileLayer(
                 urlTemplate: isDark 
@@ -423,23 +462,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 userAgentPackageName: 'com.catcode.sut_smart_bus',
                 retinaMode: RetinaMode.isHighDensity(context),
               ),
-              PolylineLayer(polylines: _buildRoutePolylines()),
+              PolylineLayer(polylines: _buildRoutePolylines(routes)),
               MarkerLayer(markers: [
                 if (_userLocation != null)
                   Marker(
                     point: LatLng(_userLocation!.latitude, _userLocation!.longitude),
                     width: 40, height: 40,
                     child: Container(
-                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.2), shape: BoxShape.circle),
+                      decoration: BoxDecoration(
+                        color: testMode.enabled ? Colors.deepPurple.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.2), 
+                        shape: BoxShape.circle
+                      ),
                       child: Center(
                         child: Container(
                           width: 14, height: 14,
-                          decoration: BoxDecoration(color: Colors.blue, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                          decoration: BoxDecoration(
+                            color: testMode.enabled ? Colors.deepPurple : Colors.blue, 
+                            shape: BoxShape.circle, 
+                            border: Border.all(color: Colors.white, width: 2)
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ..._buildStopMarkers(),
+                ..._buildStopMarkers(routes),
                 ..._buildBusMarkers(buses),
               ]),
             ],
@@ -451,28 +497,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildModernActionBtn(Icons.menu, () => Scaffold.of(context).openDrawer()),
+
                 Row(
                   children: [
-                    Stack(
-                      children: [
-                        _buildModernActionBtn(Icons.refresh, () => ref.read(dataProvider.notifier).refreshBuses()),
-                        Positioned(
-                          right: 4,
-                          top: 4,
-                          child: Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: _getMqttColor(ref.watch(mqttStatusProvider)),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 8),
+
                     _buildModernActionBtn(
                       testMode.enabled ? Icons.bug_report : Icons.bug_report_outlined,
                       () {
@@ -508,7 +536,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
           Positioned(
             right: 16,
-            bottom: (testMode.enabled || _userLocation != null) ? 220 : 100,
+            bottom: showPanel ? 230 : 32,
             child: _buildModernActionBtn(Icons.my_location, () {
               if (_userLocation != null) {
                 _mapController.move(LatLng(_userLocation!.latitude, _userLocation!.longitude), 17.0);
