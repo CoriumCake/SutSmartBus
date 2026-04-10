@@ -58,8 +58,12 @@ class DataNotifier extends StateNotifier<DataState> {
       var localRoutes = await RouteStorageService().getAllRoutes();
       
       final Map<String, BusRoute> routeMap = {};
-      for (var r in apiRoutes) routeMap[r.routeId] = r;
-      for (var r in localRoutes) routeMap[r.routeId] = r;
+      for (var r in apiRoutes) {
+        routeMap[r.routeId] = r;
+      }
+      for (var r in localRoutes) {
+        routeMap[r.routeId] = r;
+      }
       
       var routes = routeMap.values.toList();
 
