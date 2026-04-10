@@ -33,6 +33,7 @@ class Bus(MongoBaseModel):
     current_lat: Optional[float] = None
     current_lon: Optional[float] = None
     seats_available: int = 0
+    person_count: int = 0
     mac_address: str = Field(..., unique=True)
     pm2_5: float = 0.0
     pm10: float = 0.0

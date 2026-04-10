@@ -11,6 +11,7 @@ class BusBase(BaseModel):
     current_lat: float
     current_lon: float
     seats_available: int
+    person_count: int = 0
     pm2_5: float = 0.0
     pm10: float = 0.0
     temp: float = 0.0
@@ -36,6 +37,7 @@ class BusLocation(BaseModel):
     lat: Optional[float] = None
     lon: Optional[float] = None
     seats_available: int
+    person_count: Optional[int] = 0
     pm2_5: float
     pm10: float
     temp: Optional[float] = 0.0

@@ -81,8 +81,8 @@ services:
       - MQTT_BROKER_PORT=1883
       - MONGODB_URL=mongodb://mongodb:27017/sut_smart_bus
       - TZ=Asia/Bangkok
-      # Production settings (uncomment and configure):
-      # - API_SECRET_KEY=10a03d0e99aa13e2a3b89c85f5136ee35b5681d47ed30242f9f015e911f73bc8
+      # Production settings:
+      - API_SECRET_KEY=94dc28a9d3917361f6f2e39851136873c2937559587418936777bf59e07d7228
       - CORS_ORIGINS=https://catcode.tech
       - CORS_ORIGINS=*
 

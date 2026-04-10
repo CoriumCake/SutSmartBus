@@ -11,6 +11,7 @@ stop_collection = db.get_collection("stops")
 feedback_collection = db.get_collection("feedback")
 hardware_location_collection = db.get_collection("hardware_locations")
 blocked_mac_collection = db.get_collection("blocked_macs")
+pm_zone_collection = db.get_collection("pm_zones")
 
 
 async def get_bus(bus_id: str):
@@ -30,7 +31,7 @@ async def create_bus(bus: models.Bus):
     new_bus = await bus_collection.find_one({"_id": result.inserted_id})
     return new_bus
 
-async def update_bus_location(mac_address: str, lat: float | None, lon: float | None, seats_available: int, pm2_5: float, pm10: float, bus_name: str = None, temp: float = 0.0, hum: float = 0.0):
+async def update_bus_location(mac_address: str, lat: float | None, lon: float | None, seats_available: int, pm2_5: float, pm10: float, bus_name: str = None, temp: float = 0.0, hum: float = 0.0, person_count: int = None):
     # This is an 'upsert' operation: it updates a bus if it exists, or creates it if it doesn't.
     # This is useful for when a bus device comes online for the first time.
     update_data = {
@@ -41,6 +42,9 @@ async def update_bus_location(mac_address: str, lat: float | None, lon: float | 
         "hum": hum,
         "last_updated": datetime.now(timezone.utc)
     }
+    
+    if person_count is not None:
+        update_data["person_count"] = person_count
     
     # Only update location if valid coordinates are provided
     if lat is not None:
@@ -248,4 +252,50 @@ async def delete_hardware_locations_by_mac(mac_address: str):
     """Delete all location history for a specific device (used for debug cleanup)"""
     result = await hardware_location_collection.delete_many({"bus_mac": mac_address})
     return result.deleted_count
+
+
+# --- PM Zones ---
+async def get_pm_zones(skip: int = 0, limit: int = 100):
+    return await pm_zone_collection.find().skip(skip).limit(limit).to_list(limit)
+
+async def get_pm_zone(zone_id: str):
+    return await pm_zone_collection.find_one({"_id": ObjectId(zone_id)})
+
+async def create_pm_zone(zone: models.PMZone):
+    zone_dict = zone.model_dump(by_alias=True, exclude=["id"])
+    result = await pm_zone_collection.insert_one(zone_dict)
+    return await pm_zone_collection.find_one({"_id": result.inserted_id})
+
+async def update_pm_zone(zone_id: str, zone_data: dict):
+    # Ensure we don't try to update the ID
+    if "_id" in zone_data: del zone_data["_id"]
+    if "id" in zone_data: del zone_data["id"]
+    
+    zone_data["last_updated"] = datetime.now(timezone.utc)
+    
+    result = await pm_zone_collection.update_one(
+        {"_id": ObjectId(zone_id)},
+        {"$set": zone_data}
+    )
+    if result.matched_count == 0:
+        return None
+    return await get_pm_zone(zone_id)
+
+async def delete_pm_zone(zone_id: str):
+    result = await pm_zone_collection.delete_one({"_id": ObjectId(zone_id)})
+    return result.deleted_count > 0
+
+async def update_pm_zone_stats(zone_id: ObjectId | str, avg_pm25: float, avg_pm10: float):
+    """Update rolling averages for a specific zone."""
+    z_id = ObjectId(zone_id) if isinstance(zone_id, str) else zone_id
+    await pm_zone_collection.update_one(
+        {"_id": z_id},
+        {
+            "$set": {
+                "avg_pm25": avg_pm25,
+                "avg_pm10": avg_pm10,
+                "last_updated": datetime.now(timezone.utc)
+            }
+        }
+    )
 
