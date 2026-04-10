@@ -80,13 +80,19 @@ app = FastAPI(
 )
 
 # --- Middlewares ---
+# NOTE: Middleware in FastAPI/Starlette is executed in REVERSE order of addition.
+# We want CORSMiddleware to execute FIRST (to handle OPTIONS preflight), 
+# so we add it LAST.
+
+# 1. API Authentication (Executes second)
 app.add_middleware(APIKeyMiddleware)
 
+# 2. CORS (Executes first)
 cors_origins = settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS != "*" else ["*"]
 if "*" in cors_origins:
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=".*", # This acts like a wildcard but reflects the request origin
+        allow_origin_regex=".*", 
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

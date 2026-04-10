@@ -14,7 +14,7 @@ TOPIC_PERSON_DETECTION = "sut/person-detection"
 
 # Bus Config
 TOTAL_SEATS = 33
-BUS_MAC_MOCK = "ESP32-CAM-01"
+BUS_MAC_MOCK = "DEBUG-MAC-01"
 
 # Bus-Route Mapping
 BUS_ROUTE_MAPPING = {
