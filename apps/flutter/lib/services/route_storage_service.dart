@@ -16,8 +16,8 @@ class RouteStorageService {
         final json = jsonDecode(content);
         final route = BusRoute.fromJson(json);
         await box.put(route.routeId, jsonEncode(route.toJson()));
-      } catch (e) {
-        print('Error loading default route: $e');
+      } catch (_) {
+        // Silently fail for now as this is just a default route initializer
       }
     }
   }

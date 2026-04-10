@@ -58,8 +58,12 @@ class DataNotifier extends StateNotifier<DataState> {
       var localRoutes = await RouteStorageService().getAllRoutes();
       
       final Map<String, BusRoute> routeMap = {};
-      for (var r in apiRoutes) routeMap[r.routeId] = r;
-      for (var r in localRoutes) routeMap[r.routeId] = r;
+      for (var r in apiRoutes) {
+        routeMap[r.routeId] = r;
+      }
+      for (var r in localRoutes) {
+        routeMap[r.routeId] = r;
+      }
       
       var routes = routeMap.values.toList();
 
@@ -165,16 +169,19 @@ class DataNotifier extends StateNotifier<DataState> {
   }
 
   void _handleDoorCountUpdate(Map<String, dynamic> data) {
-    final busMac = data['bus_mac'] as String?;
-    final count = data['count'] as int?; // Assuming 'count' field in payload
-    if (busMac == null || count == null) return;
+    // If hardware doesn't send bus_mac, we default to the mock MAC
+    // In a multi-bus system, hardware should be updated to send its MAC
+    final busMac = data['bus_mac'] as String? ?? 'ESP32-CAM-01'; 
+    final count = data['count'] as int?; 
+    if (count == null) return;
 
     final buses = [...state.buses];
     final idx = buses.indexWhere((b) => b.busMac == busMac);
 
     if (idx >= 0) {
       buses[idx] = buses[idx].copyWith(
-        seatsAvailable: count,
+        personCount: count,
+        seatsAvailable: (33 - count).clamp(0, 33), // Use TOTAL_SEATS = 33
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       );
       state = state.copyWith(buses: buses);
@@ -217,6 +224,7 @@ class DataNotifier extends StateNotifier<DataState> {
         pm10: (data['pm10'] as num?)?.toDouble(),
         temp: (data['temp'] as num?)?.toDouble(),
         hum: (data['hum'] as num?)?.toDouble(),
+        personCount: data['person_count'] as int?,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       );
     } else if (buses.length < 50) {
@@ -226,6 +234,7 @@ class DataNotifier extends StateNotifier<DataState> {
         busName: data['bus_name'] as String? ?? 'Bus-${busMac.length >= 4 ? busMac.substring(busMac.length - 4) : ''}',
         currentLat: (data['lat'] as num?)?.toDouble(),
         currentLon: (data['lon'] as num?)?.toDouble(),
+        personCount: data['person_count'] as int?,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       ));
     }

@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "rube": {
+      "url": "https://rube.app/mcp",
+      "type": "sse",
+      "trust": true
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
+      }
+    }
+  }
+}

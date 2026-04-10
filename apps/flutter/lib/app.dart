@@ -16,6 +16,7 @@ import 'screens/about_screen.dart';
 import 'screens/testing_screen.dart';
 import 'screens/feedback_screen.dart';
 import 'screens/developer_mode_screen.dart';
+import 'screens/splash_screen.dart';
 
 // Navigation keys for each tab branch
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -23,8 +24,15 @@ final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
 final goRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
-  initialLocation: '/map',
+  initialLocation: '/splash',
   routes: [
+    GoRoute(
+      path: '/splash',
+      name: 'splash',
+      pageBuilder: (context, state) => const NoTransitionPage(
+        child: SplashScreen(),
+      ),
+    ),
     // Shell route wraps the bottom navigation tabs
     ShellRoute(
       navigatorKey: _shellNavigatorKey,

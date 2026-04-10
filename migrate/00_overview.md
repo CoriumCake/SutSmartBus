@@ -30,7 +30,7 @@ This folder contains a step-by-step plan to migrate the **SUT Smart Bus** mobile
 | Language | Dart 3.x |
 | Navigation | `go_router` |
 | State | `flutter_riverpod` |
-| Maps | `google_maps_flutter` |
+| Maps | `flutter_map` | Leaflet/OSM based |
 | Real-time | `mqtt_client` (WebSocket) |
 | HTTP | `dio` |
 | Storage | `shared_preferences` + `hive` |
@@ -93,7 +93,7 @@ Phase 4: Polish
 
 | React Native Package | Flutter Package | Notes |
 |---|---|---|
-| `react-native-maps` | `google_maps_flutter` | Nearly identical API concepts |
+| `react-native-maps` | `flutter_map` | Leaflet/OSM based |
 | `mqtt` (npm) | `mqtt_client` | Different API but same MQTT 3.1.1 |
 | `axios` | `dio` | Interceptors, timeouts, etc. |
 | `@react-native-async-storage/async-storage` | `shared_preferences` | For simple key-value |

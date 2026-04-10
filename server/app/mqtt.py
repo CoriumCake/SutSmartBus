@@ -136,20 +136,24 @@ def on_message(client, userdata, msg):
                 
                 # Sync with Seats in MongoDB
                 if state.state.main_loop:
-                    async def sync_seats():
-                        seats_available = max(0, constants.TOTAL_SEATS - state.state.current_passengers)
-                        bus_mac = constants.BUS_MAC_MOCK
+                    bus_mac = data.get('bus_mac', constants.BUS_MAC_MOCK)
+                    async def sync_seats(mac):
+                        current_passengers = state.state.current_passengers
+                        seats_available = max(0, constants.TOTAL_SEATS - current_passengers)
                         await crud.update_bus_location(
-                            mac_address=bus_mac, lat=None, lon=None,
-                            seats_available=seats_available, pm2_5=0, pm10=0
+                            mac_address=mac, lat=None, lon=None,
+                            seats_available=seats_available, pm2_5=0, pm10=0,
+                            person_count=current_passengers
                         )
                         # Broadcast to App
-                        updated_bus = await crud.get_bus_by_mac(bus_mac)
+                        updated_bus = await crud.get_bus_by_mac(mac)
                         if updated_bus:
                              app_payload = updated_bus.dict()
+                             # Add extra debug log
+                             print(f"📡 Broadcasting to app: passengers={current_passengers}, seats={seats_available}")
                              client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
                     
-                    fut = asyncio.run_coroutine_threadsafe(sync_seats(), state.state.main_loop)
+                    fut = asyncio.run_coroutine_threadsafe(sync_seats(bus_mac), state.state.main_loop)
                     fut.add_done_callback(log_future_done)
                 
                 # Compatibility with testing screen
@@ -176,13 +180,17 @@ def on_message(client, userdata, msg):
         temp = float(payload.get("temp", 0.0))
         hum = float(payload.get("hum", 0.0))
         seats_available = int(payload.get("seats_available", 0))
+        person_count = payload.get("person_count")
+        if person_count is not None:
+            person_count = int(person_count)
 
         if state.state.main_loop:
             async def process_update_async():
                 # Update DB
                 await crud.update_bus_location(
                     mac_address=bus_mac, bus_name=bus_name, lat=lat, lon=lon,
-                    seats_available=seats_available, pm2_5=pm2_5, pm10=pm10, temp=temp, hum=hum
+                    seats_available=seats_available, pm2_5=pm2_5, pm10=pm10, temp=temp, hum=hum,
+                    person_count=person_count
                 )
                 # Create history entry
                 if lat is not None and lon is not None:

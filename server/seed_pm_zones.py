@@ -4,7 +4,7 @@ import os
 from motor.motor_asyncio import AsyncIOMotorClient
 
 # Path to the shared JSON source of truth
-JSON_PATH = "../sut-smart-bus-app/routes/pm_zones.json"
+JSON_PATH = "routes/pm_zones.json"
 
 async def seed_zones():
     uri = "mongodb://localhost:27017"
