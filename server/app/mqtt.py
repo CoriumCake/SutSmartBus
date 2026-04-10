@@ -99,6 +99,7 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe(constants.TOPIC_ESP32_GPS_FAST)
         client.subscribe(constants.TOPIC_IR_TRIGGER)
         client.subscribe(constants.TOPIC_BUS_DOOR_COUNT)
+        client.subscribe(constants.TOPIC_BUS_STATUS)
         print(f"Subscribed to basic topics.")
     else:
         print(f"Failed to connect, return code {rc}\n")
@@ -176,9 +177,16 @@ def on_message(client, userdata, msg):
         temp = float(payload.get("temp", 0.0))
         hum = float(payload.get("hum", 0.0))
         seats_available = int(payload.get("seats_available", 0))
+        
         person_count = payload.get("person_count")
+        if person_count is None:
+            person_count = payload.get("count")
         if person_count is not None:
             person_count = int(person_count)
+            
+        rssi = payload.get("rssi")
+        if rssi is not None:
+            rssi = int(rssi)
 
         if state.state.main_loop:
             async def process_update_async():
@@ -186,7 +194,7 @@ def on_message(client, userdata, msg):
                 await crud.update_bus_location(
                     mac_address=bus_mac, bus_name=bus_name, lat=lat, lon=lon,
                     seats_available=seats_available, pm2_5=pm2_5, pm10=pm10, temp=temp, hum=hum,
-                    person_count=person_count
+                    person_count=person_count, rssi=rssi
                 )
                 # Create history entry
                 if lat is not None and lon is not None:

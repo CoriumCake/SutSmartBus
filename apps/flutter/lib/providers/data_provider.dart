@@ -259,21 +259,33 @@ class DataNotifier extends StateNotifier<DataState> {
 
   void _handleStatusUpdate(String topic, Map<String, dynamic> data) {
     final parts = topic.split('/');
-    if (parts.length < 3) return;
+    if (parts.length < 4) return; // sut/bus/<MAC>/status
     final busId = parts[2];
 
-    if (data['rssi'] == null) return;
-
     final buses = [...state.buses];
-    final idx = buses.indexWhere((b) => b.busMac == busId);
+    final idx = buses.indexWhere((b) => b.busMac == busId || b.id == busId);
+    
+    int? count = data['count'] as int?;
+    
     if (idx >= 0) {
       buses[idx] = buses[idx].copyWith(
         rssi: data['rssi'] as int?,
         isOnline: true,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
+        personCount: count ?? buses[idx].personCount,
       );
-      state = state.copyWith(buses: buses);
+    } else if (buses.length < 50) {
+      buses.add(Bus(
+        id: busId,
+        busMac: busId,
+        busName: 'Bus-${busId.length >= 4 ? busId.substring(busId.length - 4) : busId}',
+        rssi: data['rssi'] as int?,
+        isOnline: true,
+        lastUpdated: DateTime.now().millisecondsSinceEpoch,
+        personCount: count,
+      ));
     }
+    state = state.copyWith(buses: buses);
   }
 
   @override

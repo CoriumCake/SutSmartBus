@@ -43,13 +43,13 @@ NextStopResult? findNextStop(
 
   for (int i = currentIndex; i < waypoints.length; i++) {
     final wp = waypoints[i];
-    if (wp.isStop) {
+    if (wp.isStop && wp.stopName != null && wp.stopName!.trim().isNotEmpty) {
       final distance = getDistanceFromLatLonInM(busLat, busLon, wp.latitude, wp.longitude);
       final etaSeconds = distance / averageSpeedMps;
       final etaMinutes = max(1, (etaSeconds / 60).round());
 
       return NextStopResult(
-        stopName: wp.stopName ?? 'Stop ${i + 1}',
+        stopName: wp.stopName!,
         stopIndex: i,
         distanceM: distance.round(),
         etaMinutes: etaMinutes,
@@ -59,9 +59,9 @@ NextStopResult? findNextStop(
 
   for (int i = 0; i < currentIndex; i++) {
     final wp = waypoints[i];
-    if (wp.isStop) {
+    if (wp.isStop && wp.stopName != null && wp.stopName!.trim().isNotEmpty) {
       return NextStopResult(
-        stopName: wp.stopName ?? 'Stop ${i + 1}',
+        stopName: wp.stopName!,
         stopIndex: i,
         distanceM: null,
         etaMinutes: null,

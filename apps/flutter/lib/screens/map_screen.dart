@@ -12,7 +12,9 @@ import '../models/bus.dart';
 import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../utils/map_utils.dart';
+import '../utils/route_helpers.dart';
 import '../providers/simulation_provider.dart';
+import '../widgets/bus_card.dart';
 
 
 class IncomingBus {
@@ -226,27 +228,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // Show bottom sheet with bus details
     showModalBottomSheet(
       context: context,
-      builder: (context) => _BusDetailsBottomSheet(
-        bus: bus,
-        busRoute: route,
-        personCount: bus.personCount,
-        onRingBell: (mac) async {
-          try {
-            await _busService.ringBell(mac);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Ring signal sent!')),
-              );
-            }
-          } catch (e) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to send ring: ${e.toString()}')),
-              );
-            }
-          }
-        },
-      ),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      builder: (context) {
+        final nextStop = route != null ? findNextStop(bus.currentLat, bus.currentLon, route.waypoints) : null;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
+          child: BusCard(
+            bus: bus,
+            routeInfo: route != null ? BusRouteInfo(route: route, nextStop: nextStop) : null,
+            passengerCount: bus.personCount ?? 0,
+            onTap: () {
+              // Usually clicking the card itself doesn't do anything when it's already a bottom sheet,
+              // but we might want to pop it or show more info. We'll do nothing here as ringing handles itself.
+            },
+            onRingBell: () async {
+              try {
+                await _busService.ringBell(bus.busMac);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Ring signal sent!')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to send ring: ${e.toString()}')),
+                  );
+                }
+              }
+              if (context.mounted) Navigator.pop(context);
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -296,53 +311,267 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       bottom: 24,
       left: 16,
       right: 16,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor.withValues(alpha: 0.95),
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 20, offset: const Offset(0, 10)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.location_on, color: Colors.blue, size: 20),
-                const SizedBox(width: 8),
-                Expanded(child: Text(nearest.stop.stopName ?? 'Nearby Stop', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18))),
-                Text('${(nearest.distance).round()}m', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-              ],
-            ),
-            const Divider(height: 24),
-            if (incoming.isEmpty)
-              const Text('No incoming buses.', style: TextStyle(color: Colors.grey))
-            else
-              ...incoming.take(2).map((b) => Padding(
-                padding: const EdgeInsets.only(bottom: 12.0),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: _parseColor(b.routeColor).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
-                      child: Text(b.routeName, style: TextStyle(color: _parseColor(b.routeColor), fontWeight: FontWeight.bold, fontSize: 12)),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Top row
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.location_on, color: Colors.blue, size: 18),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                nearest.stop.stopName ?? 'Nearby Stop',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF2D3748),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Nearby Station',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF718096),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(b.bus.busName, style: const TextStyle(fontWeight: FontWeight.w500))),
-                    Column(
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text('${b.etaMinutes} min', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
-                        Text('${b.stopsAway} stops', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.directions_walk, size: 16, color: Color(0xFF48BB78)),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${nearest.distance.round()}m',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF48BB78),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Distance',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFFA0AEC0),
+                          ),
+                        ),
                       ],
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Middle Section
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFEDF2F7)),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.02),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-              )),
-          ],
+                child: Row(
+                  children: [
+                    // NEXT BUS
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'NEXT BUS',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFA0AEC0),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            incoming.isNotEmpty ? incoming.first.bus.busName : '-',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2D3748),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(width: 1, height: 32, color: const Color(0xFFE2E8F0)),
+                    
+                    // PASSENGERS
+                    Expanded(
+                      flex: 4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text(
+                            'PASSENGERS',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFA0AEC0),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            incoming.isNotEmpty ? '${incoming.first.bus.personCount ?? 0}/33' : '-',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2D3748),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(width: 1, height: 32, color: const Color(0xFFE2E8F0)),
+                    
+                    // ETA
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text(
+                            'ETA',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFA0AEC0),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            incoming.isNotEmpty ? '${incoming.first.etaMinutes} min' : '-',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2D3748),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 16),
+              
+              // Bottom Button
+              SizedBox(
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: incoming.isNotEmpty ? () async {
+                    try {
+                      await _busService.ringBell(incoming.first.bus.busMac);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Ring signal sent!')),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to send ring: ${e.toString()}')),
+                        );
+                      }
+                    }
+                  } : () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('No incoming buses to ring.')),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF6C852), // Yellow color from image
+                    foregroundColor: Colors.black,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.notifications, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'RING BELL',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -570,77 +799,3 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 }
 
-class _BusDetailsBottomSheet extends StatelessWidget {
-  final Bus bus;
-  final BusRoute? busRoute;
-  final int? personCount;
-  final Function(String) onRingBell;
-
-  const _BusDetailsBottomSheet({
-    required this.bus,
-    this.busRoute,
-    this.personCount,
-    required this.onRingBell,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              bus.busName,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            if (busRoute != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Text('Route: ${busRoute!.routeName}', style: const TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            const Divider(),
-            _buildInfoRow(Icons.person, 'Passengers', personCount?.toString() ?? 'Waiting for ESP32...'),
-            _buildInfoRow(Icons.air, 'PM2.5', bus.pm25?.toStringAsFixed(1) ?? "--", valueColor: _getPM25Color(bus.pm25)),
-            _buildInfoRow(Icons.event_seat, 'Seats available', bus.seatsAvailable?.toString() ?? "--"),
-            _buildInfoRow(Icons.update, 'Last Updated', DateTime.fromMillisecondsSinceEpoch(bus.lastUpdated).toLocal().toString().split('.')[0]),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                onRingBell(bus.busMac);
-                Navigator.pop(context); // Dismiss bottom sheet after action
-              },
-              icon: const Icon(Icons.notifications_active),
-              label: const Text('Ring Driver'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(IconData icon, String label, String value, {Color? valueColor}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-          const Spacer(),
-          Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: valueColor)),
-        ],
-      ),
-    );
-  }
-
-  Color? _getPM25Color(double? pm25) {
-    if (pm25 == null) return null;
-    if (pm25 < 12) return Colors.green;
-    if (pm25 < 35.4) return Colors.yellow[700];
-    if (pm25 < 55.4) return Colors.orange;
-    return Colors.red;
-  }
-}
