@@ -31,7 +31,7 @@ async def create_bus(bus: models.Bus):
     new_bus = await bus_collection.find_one({"_id": result.inserted_id})
     return new_bus
 
-async def update_bus_location(mac_address: str, lat: float | None, lon: float | None, seats_available: int, pm2_5: float, pm10: float, bus_name: str = None, temp: float = 0.0, hum: float = 0.0, person_count: int = None):
+async def update_bus_location(mac_address: str, lat: float | None, lon: float | None, seats_available: int, pm2_5: float, pm10: float, bus_name: str = None, temp: float = 0.0, hum: float = 0.0, person_count: int = None, rssi: int = None):
     # This is an 'upsert' operation: it updates a bus if it exists, or creates it if it doesn't.
     # This is useful for when a bus device comes online for the first time.
     update_data = {
@@ -45,6 +45,9 @@ async def update_bus_location(mac_address: str, lat: float | None, lon: float | 
     
     if person_count is not None:
         update_data["person_count"] = person_count
+        
+    if rssi is not None:
+        update_data["rssi"] = rssi
     
     # Only update location if valid coordinates are provided
     if lat is not None:
