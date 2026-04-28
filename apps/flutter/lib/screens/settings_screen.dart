@@ -131,6 +131,13 @@ class SettingsScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/feedback'),
           ),
+          _sectionCard(
+            theme,
+            icon: Icons.privacy_tip_outlined,
+            title: 'Privacy & Policies',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/privacy-policy'),
+          ),
 
           // ─── Debug Info ─────────────────────────
           if (debugState.debugMode) ...[

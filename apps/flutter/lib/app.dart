@@ -17,6 +17,7 @@ import 'screens/testing_screen.dart';
 import 'screens/feedback_screen.dart';
 import 'screens/developer_mode_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/privacy_policy_screen.dart';
 
 // Navigation keys for each tab branch
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -113,6 +114,12 @@ final goRouter = GoRouter(
       name: 'feedback',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const FeedbackScreen(),
+    ),
+    GoRoute(
+      path: '/privacy-policy',
+      name: 'privacyPolicy',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const PrivacyPolicyScreen(),
     ),
     GoRoute(
       path: '/developer',
