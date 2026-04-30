@@ -169,7 +169,7 @@ Both devices support Over-The-Air firmware updates via MQTT:
 ## Related Repositories
 
 - [sut-smart-bus-server](../sut-smart-bus-server) - Backend API (FastAPI + Docker)
-- [sut-smart-bus-app](../sut-smart-bus-app) - Mobile app (React Native/Expo)
+- [../apps/flutter](../apps/flutter) - Flutter mobile app
 
 ## License
 

@@ -2,25 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class SplashScreen extends StatefulWidget {
+import '../providers/legal_consent_provider.dart';
+
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _fadeController;
   late AnimationController _bounceController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _bounceAnimation;
+  bool _minimumDelayComplete = false;
+  bool _didNavigate = false;
 
   @override
   void initState() {
     super.initState();
-    
+
     // Fade Animation (Once)
     _fadeController = AnimationController(
       vsync: this,
@@ -39,8 +44,9 @@ class _SplashScreenState extends State<SplashScreen>
     )..repeat(reverse: true);
 
     _bounceAnimation = Tween<Offset>(
-      begin: const Offset(0.0, -0.03), // เลขติดลบน้อยๆ ให้ขยับขึ้นนิดเดียว (เด้งเบาๆ)
-      end: const Offset(0.0, 0.03),    // เลขบวกน้อยๆ ให้ขยับลงนิดเดียว (เด้งเบาๆ)
+      begin: const Offset(
+          0.0, -0.03), // เลขติดลบน้อยๆ ให้ขยับขึ้นนิดเดียว (เด้งเบาๆ)
+      end: const Offset(0.0, 0.03), // เลขบวกน้อยๆ ให้ขยับลงนิดเดียว (เด้งเบาๆ)
     ).animate(CurvedAnimation(
       parent: _bounceController,
       curve: Curves.easeInOut,
@@ -49,12 +55,26 @@ class _SplashScreenState extends State<SplashScreen>
     // Remove the native splash screen so our custom one can fade in or be shown immediately
     FlutterNativeSplash.remove();
 
-    // Navigate to the map screen after 3 seconds
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        context.go('/map');
-      }
+    ref.listenManual<LegalConsentState>(legalConsentProvider, (_, next) {
+      _attemptNavigation(next);
     });
+
+    Future.delayed(const Duration(seconds: 3), () {
+      _minimumDelayComplete = true;
+      _attemptNavigation(ref.read(legalConsentProvider));
+    });
+  }
+
+  void _attemptNavigation(LegalConsentState consentState) {
+    if (!mounted ||
+        _didNavigate ||
+        !_minimumDelayComplete ||
+        consentState.isLoading) {
+      return;
+    }
+
+    _didNavigate = true;
+    context.go(consentState.hasAccepted ? '/map' : '/legal-consent');
   }
 
   @override

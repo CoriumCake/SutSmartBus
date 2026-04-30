@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,7 +16,6 @@ import '../utils/map_utils.dart';
 import '../utils/route_helpers.dart';
 import '../providers/simulation_provider.dart';
 import '../widgets/bus_card.dart';
-
 
 class IncomingBus {
   final Bus bus;
@@ -73,7 +73,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final position = await Geolocator.getCurrentPosition();
       if (mounted) {
         setState(() => _userLocation = position);
-        _mapController.move(LatLng(position.latitude, position.longitude), 15.5);
+        _mapController.move(
+            LatLng(position.latitude, position.longitude), 15.5);
       }
     } catch (_) {}
 
@@ -101,16 +102,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return false;
     }
-    
+
     if (permission == LocationPermission.deniedForever) return false;
     return true;
   }
 
   List<Marker> _buildBusMarkers(List<Bus> buses) {
-    return buses.where((b) => b.currentLat != null && b.currentLon != null).map((bus) {
-      final color = _parseColor(bus.routeId != null ? 
-          ref.read(routesProvider).firstWhere((r) => r.routeId == bus.routeId, 
-          orElse: () => BusRoute(routeId: '', routeName: '', waypoints: [])).routeColor : '#FF9800');
+    return buses
+        .where((b) => b.currentLat != null && b.currentLon != null)
+        .map((bus) {
+      final color = _parseColor(bus.routeId != null
+          ? ref
+              .read(routesProvider)
+              .firstWhere((r) => r.routeId == bus.routeId,
+                  orElse: () =>
+                      BusRoute(routeId: '', routeName: '', waypoints: []))
+              .routeColor
+          : '#FF9800');
 
       return Marker(
         point: LatLng(bus.currentLat!, bus.currentLon!),
@@ -125,7 +133,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               color: color,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: color.withValues(alpha: 0.4), blurRadius: 8, offset: const Offset(0, 4)),
+                BoxShadow(
+                    color: color.withValues(alpha: 0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4)),
               ],
               border: Border.all(color: Colors.white, width: 2),
             ),
@@ -135,12 +146,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.directions_bus, color: Colors.white, size: 14),
+                    const Icon(Icons.directions_bus,
+                        color: Colors.white, size: 14),
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
                         bus.busName.split('-').last,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -148,7 +163,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 Text(
                   'Passenger: ${bus.personCount ?? 0}',
-                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -165,7 +183,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return route.stops.asMap().entries.map((entry) {
         final i = entry.key;
         final stop = entry.value;
-        final isNext = _activeRoute != null && route.routeId == _activeRoute!.routeId && i == _currentStopIndex;
+        final isNext = _activeRoute != null &&
+            route.routeId == _activeRoute!.routeId &&
+            i == _currentStopIndex;
 
         return Marker(
           point: LatLng(stop.latitude, stop.longitude),
@@ -175,9 +195,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             decoration: BoxDecoration(
               color: isNext ? Colors.green : Colors.white,
               shape: BoxShape.circle,
-              border: Border.all(color: _parseColor(route.routeColor), width: 2),
+              border:
+                  Border.all(color: _parseColor(route.routeColor), width: 2),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, spreadRadius: 1),
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    spreadRadius: 1),
               ],
             ),
           ),
@@ -188,11 +212,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   List<Polyline> _buildRoutePolylines(List<BusRoute> allRoutes) {
     final routesToShow = _activeRoute != null ? [_activeRoute!] : allRoutes;
-    
+
     return routesToShow.map((route) {
       final color = _parseColor(route.routeColor);
       return Polyline(
-        points: route.waypoints.map((w) => LatLng(w.latitude, w.longitude)).toList(),
+        points: route.waypoints
+            .map((w) => LatLng(w.latitude, w.longitude))
+            .toList(),
         color: color,
         strokeWidth: 5,
         borderStrokeWidth: 2,
@@ -212,15 +238,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
   }
 
-
-
   void _onBusTap(Bus bus) {
     final routes = ref.read(routesProvider);
     final route = routes.where((r) => r.routeId == bus.routeId).firstOrNull;
     setState(() {
       _activeRoute = route;
       if (bus.currentLat != null && bus.currentLon != null && route != null) {
-        _currentStopIndex = calculateBusStopIndex(route, LatLng(bus.currentLat!, bus.currentLon!));
+        _currentStopIndex = calculateBusStopIndex(
+            route, LatLng(bus.currentLat!, bus.currentLon!));
       }
     });
     _mapController.move(LatLng(bus.currentLat!, bus.currentLon!), 16.5);
@@ -231,12 +256,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       backgroundColor: Colors.transparent,
       elevation: 0,
       builder: (context) {
-        final nextStop = route != null ? findNextStop(bus.currentLat, bus.currentLon, route.waypoints) : null;
+        final nextStop = route != null
+            ? findNextStop(bus.currentLat, bus.currentLon, route.waypoints)
+            : null;
         return Container(
           margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
           child: BusCard(
             bus: bus,
-            routeInfo: route != null ? BusRouteInfo(route: route, nextStop: nextStop) : null,
+            routeInfo: route != null
+                ? BusRouteInfo(route: route, nextStop: nextStop)
+                : null,
             passengerCount: bus.personCount ?? 0,
             onTap: () {
               // Usually clicking the card itself doesn't do anything when it's already a bottom sheet,
@@ -253,7 +282,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Failed to send ring: ${e.toString()}')),
+                    SnackBar(
+                        content: Text('Failed to send ring: ${e.toString()}')),
                   );
                 }
               }
@@ -278,7 +308,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final lenSq = dx * dx + dy * dy;
       if (lenSq == 0) continue;
       final t = ((busPosition.latitude - segStart.latitude) * dx +
-          (busPosition.longitude - segStart.longitude) * dy) / lenSq;
+              (busPosition.longitude - segStart.longitude) * dy) /
+          lenSq;
       final clampedT = t.clamp(0.0, 1.0);
       final projLat = segStart.latitude + clampedT * dx;
       final projLon = segStart.longitude + clampedT * dy;
@@ -301,9 +332,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (_userLocation == null) return const SizedBox.shrink();
 
     final allStops = routes.expand((r) => r.stops).toList();
-    final nearest = findNearestStop(LatLng(_userLocation!.latitude, _userLocation!.longitude), allStops);
+    final nearest = findNearestStop(
+        LatLng(_userLocation!.latitude, _userLocation!.longitude), allStops);
 
-    if (nearest == null || nearest.distance > 800) return const SizedBox.shrink();
+    if (nearest == null || nearest.distance > 800)
+      return const SizedBox.shrink();
 
     final incoming = calculateIncomingBuses(nearest.stop, buses, routes);
 
@@ -344,7 +377,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.location_on, color: Colors.blue, size: 18),
+                            const Icon(Icons.location_on,
+                                color: Colors.blue, size: 18),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
@@ -371,7 +405,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF7FAFC),
                       borderRadius: BorderRadius.circular(12),
@@ -382,7 +417,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.directions_walk, size: 16, color: Color(0xFF48BB78)),
+                            const Icon(Icons.directions_walk,
+                                size: 16, color: Color(0xFF48BB78)),
                             const SizedBox(width: 4),
                             Text(
                               '${nearest.distance.round()}m',
@@ -407,12 +443,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ],
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Middle Section
               Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(color: const Color(0xFFEDF2F7)),
@@ -444,7 +481,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            incoming.isNotEmpty ? incoming.first.bus.busName : '-',
+                            incoming.isNotEmpty
+                                ? incoming.first.bus.busName
+                                : '-',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -455,8 +494,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ],
                       ),
                     ),
-                    Container(width: 1, height: 32, color: const Color(0xFFE2E8F0)),
-                    
+                    Container(
+                        width: 1, height: 32, color: const Color(0xFFE2E8F0)),
+
                     // PASSENGERS
                     Expanded(
                       flex: 4,
@@ -474,7 +514,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            incoming.isNotEmpty ? '${incoming.first.bus.personCount ?? 0}/33' : '-',
+                            incoming.isNotEmpty
+                                ? '${incoming.first.bus.personCount ?? 0}/33'
+                                : '-',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -484,8 +526,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ],
                       ),
                     ),
-                    Container(width: 1, height: 32, color: const Color(0xFFE2E8F0)),
-                    
+                    Container(
+                        width: 1, height: 32, color: const Color(0xFFE2E8F0)),
+
                     // ETA
                     Expanded(
                       flex: 3,
@@ -503,7 +546,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            incoming.isNotEmpty ? '${incoming.first.etaMinutes} min' : '-',
+                            incoming.isNotEmpty
+                                ? '${incoming.first.etaMinutes} min'
+                                : '-',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -518,35 +563,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Bottom Button
               SizedBox(
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: incoming.isNotEmpty ? () async {
-                    try {
-                      await _busService.ringBell(incoming.first.bus.busMac);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Ring signal sent!')),
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Failed to send ring: ${e.toString()}')),
-                        );
-                      }
-                    }
-                  } : () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('No incoming buses to ring.')),
-                    );
-                  },
+                  onPressed: incoming.isNotEmpty
+                      ? () async {
+                          try {
+                            await _busService
+                                .ringBell(incoming.first.bus.busMac);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('Ring signal sent!')),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        'Failed to send ring: ${e.toString()}')),
+                              );
+                            }
+                          }
+                        }
+                      : () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('No incoming buses to ring.')),
+                          );
+                        },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF6C852), // Yellow color from image
+                    backgroundColor:
+                        const Color(0xFFF6C852), // Yellow color from image
                     foregroundColor: Colors.black,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -577,11 +630,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  ({Waypoint stop, double distance})? findNearestStop(LatLng userLocation, List<Waypoint> allStops) {
+  ({Waypoint stop, double distance})? findNearestStop(
+      LatLng userLocation, List<Waypoint> allStops) {
     Waypoint? closest;
     double closestDist = double.infinity;
     for (final stop in allStops) {
-      final dist = getDistanceFromLatLonInM(userLocation.latitude, userLocation.longitude, stop.latitude, stop.longitude);
+      final dist = getDistanceFromLatLonInM(userLocation.latitude,
+          userLocation.longitude, stop.latitude, stop.longitude);
       if (dist < closestDist) {
         closestDist = dist;
         closest = stop;
@@ -591,20 +646,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return (stop: closest, distance: closestDist);
   }
 
-  List<IncomingBus> calculateIncomingBuses(Waypoint nearbyStop, List<Bus> buses, List<BusRoute> allRoutes) {
+  List<IncomingBus> calculateIncomingBuses(
+      Waypoint nearbyStop, List<Bus> buses, List<BusRoute> allRoutes) {
     const avgBusSpeedMs = 25 * 1000 / 3600;
     final incoming = <IncomingBus>[];
     for (final bus in buses) {
       if (bus.currentLat == null || bus.currentLon == null) continue;
-      final route = allRoutes.where((r) => r.routeId == bus.routeId).firstOrNull;
+      final route =
+          allRoutes.where((r) => r.routeId == bus.routeId).firstOrNull;
       if (route == null) continue;
-      final stopIdx = route.waypoints.indexWhere((wp) => wp.isStop && wp.stopName == nearbyStop.stopName);
+      final stopIdx = route.waypoints
+          .indexWhere((wp) => wp.isStop && wp.stopName == nearbyStop.stopName);
       if (stopIdx == -1) continue;
       int busSegmentIdx = 0;
       double minDist = double.infinity;
       for (int i = 0; i < route.waypoints.length - 1; i++) {
         final wp = route.waypoints[i];
-        final dist = getDistanceFromLatLonInM(bus.currentLat!, bus.currentLon!, wp.latitude, wp.longitude);
+        final dist = getDistanceFromLatLonInM(
+            bus.currentLat!, bus.currentLon!, wp.latitude, wp.longitude);
         if (dist < minDist) {
           minDist = dist;
           busSegmentIdx = i;
@@ -613,10 +672,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (busSegmentIdx >= stopIdx) continue;
       double routeDistance = 0;
       for (int i = busSegmentIdx; i < stopIdx; i++) {
-        routeDistance += getDistanceFromLatLonInM(route.waypoints[i].latitude, route.waypoints[i].longitude, route.waypoints[i + 1].latitude, route.waypoints[i + 1].longitude);
+        routeDistance += getDistanceFromLatLonInM(
+            route.waypoints[i].latitude,
+            route.waypoints[i].longitude,
+            route.waypoints[i + 1].latitude,
+            route.waypoints[i + 1].longitude);
       }
-      final etaMinutes = (routeDistance / avgBusSpeedMs / 60).round().clamp(1, 999);
-      incoming.add(IncomingBus(bus: bus, routeName: route.routeName, routeColor: route.routeColor, distanceM: routeDistance.round(), etaMinutes: etaMinutes, stopsAway: stopIdx - busSegmentIdx));
+      final etaMinutes =
+          (routeDistance / avgBusSpeedMs / 60).round().clamp(1, 999);
+      incoming.add(IncomingBus(
+          bus: bus,
+          routeName: route.routeName,
+          routeColor: route.routeColor,
+          distanceM: routeDistance.round(),
+          etaMinutes: etaMinutes,
+          stopsAway: stopIdx - busSegmentIdx));
     }
     incoming.sort((a, b) => a.etaMinutes.compareTo(b.etaMinutes));
     return incoming;
@@ -632,7 +702,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     bool showPanel = false;
     if (_userLocation != null && routes.isNotEmpty) {
       final allStops = routes.expand((r) => r.stops).toList();
-      final nearest = findNearestStop(LatLng(_userLocation!.latitude, _userLocation!.longitude), allStops);
+      final nearest = findNearestStop(
+          LatLng(_userLocation!.latitude, _userLocation!.longitude), allStops);
       if (nearest != null && nearest.distance <= 800) {
         showPanel = true;
       }
@@ -645,48 +716,68 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _sutCenter, 
+              initialCenter: _sutCenter,
               initialZoom: 15.5,
               onTap: (tapPosition, point) {
                 if (testMode.enabled) {
-                  ref.read(simulationProvider.notifier).updateLocation(point.latitude, point.longitude);
+                  ref
+                      .read(simulationProvider.notifier)
+                      .updateLocation(point.latitude, point.longitude);
                   setState(() {
                     _userLocation = Position(
                       latitude: point.latitude,
                       longitude: point.longitude,
                       timestamp: DateTime.now(),
-                      accuracy: 100, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+                      accuracy: 100,
+                      altitude: 0,
+                      altitudeAccuracy: 0,
+                      heading: 0,
+                      headingAccuracy: 0,
+                      speed: 0,
+                      speedAccuracy: 0,
                     );
                   });
                   ScaffoldMessenger.of(context).hideCurrentSnackBar();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Spoofed User & Test Bus Location!'), duration: Duration(milliseconds: 500)),
+                    const SnackBar(
+                        content: Text('Spoofed User & Test Bus Location!'),
+                        duration: Duration(milliseconds: 500)),
                   );
                 }
               },
               onLongPress: (tapPosition, point) {
                 if (testMode.enabled) {
-                  ref.read(simulationProvider.notifier).updateLocation(point.latitude, point.longitude);
+                  ref
+                      .read(simulationProvider.notifier)
+                      .updateLocation(point.latitude, point.longitude);
                   setState(() {
                     _userLocation = Position(
                       latitude: point.latitude,
                       longitude: point.longitude,
                       timestamp: DateTime.now(),
-                      accuracy: 100, altitude: 0, altitudeAccuracy: 0, heading: 0, headingAccuracy: 0, speed: 0, speedAccuracy: 0,
+                      accuracy: 100,
+                      altitude: 0,
+                      altitudeAccuracy: 0,
+                      heading: 0,
+                      headingAccuracy: 0,
+                      speed: 0,
+                      speedAccuracy: 0,
                     );
                   });
                   ScaffoldMessenger.of(context).hideCurrentSnackBar();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Spoofed User & Test Bus Location!'), duration: Duration(milliseconds: 500)),
+                    const SnackBar(
+                        content: Text('Spoofed User & Test Bus Location!'),
+                        duration: Duration(milliseconds: 500)),
                   );
                 }
               },
             ),
             children: [
               TileLayer(
-                urlTemplate: isDark 
-                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                  : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                urlTemplate: isDark
+                    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
                 subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'com.catcode.sut_smart_bus',
                 retinaMode: RetinaMode.isHighDensity(context),
@@ -695,21 +786,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               MarkerLayer(markers: [
                 if (_userLocation != null)
                   Marker(
-                    point: LatLng(_userLocation!.latitude, _userLocation!.longitude),
-                    width: 40, height: 40,
+                    point: LatLng(
+                        _userLocation!.latitude, _userLocation!.longitude),
+                    width: 40,
+                    height: 40,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: testMode.enabled ? Colors.deepPurple.withValues(alpha: 0.2) : Colors.blue.withValues(alpha: 0.2), 
-                        shape: BoxShape.circle
-                      ),
+                          color: testMode.enabled
+                              ? Colors.deepPurple.withValues(alpha: 0.2)
+                              : Colors.blue.withValues(alpha: 0.2),
+                          shape: BoxShape.circle),
                       child: Center(
                         child: Container(
-                          width: 14, height: 14,
+                          width: 14,
+                          height: 14,
                           decoration: BoxDecoration(
-                            color: testMode.enabled ? Colors.deepPurple : Colors.blue, 
-                            shape: BoxShape.circle, 
-                            border: Border.all(color: Colors.white, width: 2)
-                          ),
+                              color: testMode.enabled
+                                  ? Colors.deepPurple
+                                  : Colors.blue,
+                              shape: BoxShape.circle,
+                              border:
+                                  Border.all(color: Colors.white, width: 2)),
                         ),
                       ),
                     ),
@@ -726,12 +823,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-
                 Row(
                   children: [
-
                     _buildModernActionBtn(
-                      testMode.enabled ? Icons.bug_report : Icons.bug_report_outlined,
+                      testMode.enabled
+                          ? Icons.bug_report
+                          : Icons.bug_report_outlined,
                       () {
                         final wasEnabled = testMode.enabled;
                         ref.read(testModeProvider.notifier).toggle(
@@ -742,7 +839,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         // Auto-zoom to simulation start
                         if (!wasEnabled && _userLocation != null) {
                           _mapController.move(
-                            LatLng(_userLocation!.latitude, _userLocation!.longitude),
+                            LatLng(_userLocation!.latitude,
+                                _userLocation!.longitude),
                             17.0,
                           );
                         }
@@ -760,6 +858,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                   ],
                 ),
+                _buildModernActionBtn(
+                  Icons.bar_chart_rounded,
+                  () => context.pushNamed('passengerStats'),
+                  color: const Color(0xFF0F766E),
+                ),
               ],
             ),
           ),
@@ -768,7 +871,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             bottom: showPanel ? 230 : 32,
             child: _buildModernActionBtn(Icons.my_location, () {
               if (_userLocation != null) {
-                _mapController.move(LatLng(_userLocation!.latitude, _userLocation!.longitude), 17.0);
+                _mapController.move(
+                    LatLng(_userLocation!.latitude, _userLocation!.longitude),
+                    17.0);
               } else {
                 _initLocation();
               }
@@ -780,22 +885,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  Widget _buildModernActionBtn(IconData icon, VoidCallback onTap, {Color? color}) {
+  Widget _buildModernActionBtn(IconData icon, VoidCallback onTap,
+      {Color? color}) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor.withValues(alpha: 0.9),
         shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           customBorder: const CircleBorder(),
-          child: Padding(padding: const EdgeInsets.all(12), child: Icon(icon, size: 24, color: color)),
+          child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Icon(icon, size: 24, color: color)),
         ),
       ),
     );
   }
 }
-

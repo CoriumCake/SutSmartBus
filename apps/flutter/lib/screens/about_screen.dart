@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
 import '../providers/debug_provider.dart';
@@ -37,7 +38,8 @@ class AboutScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.directions_bus, size: 54, color: Colors.white),
+                  child: const Icon(Icons.directions_bus,
+                      size: 54, color: Colors.white),
                 ),
                 const SizedBox(height: 20),
                 Text(
@@ -57,12 +59,14 @@ class AboutScreen extends ConsumerWidget {
                       onLongPress: () {
                         Clipboard.setData(ClipboardData(text: deviceId));
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Device ID copied to clipboard')),
+                          const SnackBar(
+                              content: Text('Device ID copied to clipboard')),
                         );
                       },
                       child: Text(
                         'Device ID: $deviceId',
-                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: Colors.grey),
                       ),
                     );
                   },
@@ -90,11 +94,16 @@ class AboutScreen extends ConsumerWidget {
                 children: [
                   Text('Core Features', style: theme.textTheme.titleLarge),
                   const SizedBox(height: 16),
-                  _buildFeatureRow(Icons.location_on, 'Real-time GPS Tracking', colorScheme.primary),
-                  _buildFeatureRow(Icons.eco, 'Live PM2.5 Monitoring', Colors.green),
-                  _buildFeatureRow(Icons.timer, 'Smart ETA Predictions', Colors.blue),
-                  _buildFeatureRow(Icons.map, 'Interactive Route Maps', Colors.purple),
-                  _buildFeatureRow(Icons.notifications_active, 'Arrival Notifications', Colors.orange),
+                  _buildFeatureRow(Icons.location_on, 'Real-time GPS Tracking',
+                      colorScheme.primary),
+                  _buildFeatureRow(
+                      Icons.eco, 'Live PM2.5 Monitoring', Colors.green),
+                  _buildFeatureRow(
+                      Icons.timer, 'Smart ETA Predictions', Colors.blue),
+                  _buildFeatureRow(
+                      Icons.map, 'Interactive Route Maps', Colors.purple),
+                  _buildFeatureRow(Icons.notifications_active,
+                      'Arrival Notifications', Colors.orange),
                 ],
               ),
             ),
@@ -120,9 +129,26 @@ class AboutScreen extends ConsumerWidget {
                 children: [
                   Text('Connect with us', style: theme.textTheme.titleLarge),
                   const SizedBox(height: 16),
-                  _buildLinkRow(theme, Icons.language, 'Official Website', 'https://www.sut.ac.th'),
-                  _buildLinkRow(theme, Icons.email, 'Technical Support', 'mailto:support@sut.ac.th'),
-                  _buildLinkRow(theme, Icons.code, 'Project Repository', 'https://github.com/SUT-Smart-Bus'),
+                  _buildLinkRow(theme, Icons.language, 'Official Website',
+                      'https://www.sut.ac.th'),
+                  _buildLinkRow(theme, Icons.email, 'Technical Support',
+                      'mailto:support@sut.ac.th'),
+                  _buildLinkRow(theme, Icons.code, 'Project Repository',
+                      'https://github.com/SUT-Smart-Bus'),
+                  _buildNavigationRow(
+                    context,
+                    theme,
+                    Icons.description_outlined,
+                    'Terms of Service',
+                    '/legal-document?type=terms',
+                  ),
+                  _buildNavigationRow(
+                    context,
+                    theme,
+                    Icons.privacy_tip_outlined,
+                    'Privacy Policy',
+                    '/legal-document?type=privacy',
+                  ),
                 ],
               ),
             ),
@@ -177,7 +203,8 @@ class AboutScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildLinkRow(ThemeData theme, IconData icon, String label, String url) {
+  Widget _buildLinkRow(
+      ThemeData theme, IconData icon, String label, String url) {
     return InkWell(
       onTap: () async {
         final uri = Uri.parse(url);
@@ -201,7 +228,45 @@ class AboutScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            Icon(Icons.open_in_new, size: 16, color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+            Icon(Icons.open_in_new,
+                size: 16,
+                color: theme.colorScheme.primary.withValues(alpha: 0.5)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavigationRow(
+    BuildContext context,
+    ThemeData theme,
+    IconData icon,
+    String label,
+    String route,
+  ) {
+    return InkWell(
+      onTap: () => context.push(route),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Row(
+          children: [
+            Icon(icon, size: 22, color: theme.colorScheme.primary),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: theme.colorScheme.primary.withValues(alpha: 0.5),
+            ),
           ],
         ),
       ),

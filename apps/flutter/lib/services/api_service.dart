@@ -49,6 +49,42 @@ class ApiService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> fetchPassengerCountHistory({
+    int hours = 24,
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/api/analytics/passenger-count-history',
+        queryParameters: {'hours': hours},
+      );
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[ApiService] Error fetching passenger history: $e');
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> fetchPassengerStats({
+    String period = 'daily',
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/api/analytics/passenger-stats',
+        queryParameters: {'period': period},
+      );
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[ApiService] Error fetching passenger stats: $e');
+      return null;
+    }
+  }
+
   // ─── Routes ──────────────────────────────────────
 
   Future<List<BusRoute>> fetchRoutes() async {
@@ -57,13 +93,16 @@ class ApiService {
       final routesRes = await _dio.get('/api/routes');
       // 2. Fetch all stops (server doesn't have route-specific stops endpoint yet)
       final stopsRes = await _dio.get('/api/stops');
-      
-      final allStops = (stopsRes.data as List?)?.map((s) => {
-        'latitude': s['lat'],
-        'longitude': s['lon'],
-        'stopName': s['name'],
-        'isStop': true,
-      }).toList() ?? [];
+
+      final allStops = (stopsRes.data as List?)
+              ?.map((s) => {
+                    'latitude': s['lat'],
+                    'longitude': s['lon'],
+                    'stopName': s['name'],
+                    'isStop': true,
+                  })
+              .toList() ??
+          [];
 
       if (routesRes.data is List) {
         return (routesRes.data as List).map((r) {
@@ -71,7 +110,7 @@ class ApiService {
           // For now, we'll attach all stops or handle via mapping if available
           return BusRoute.fromJson({
             ...r as Map<String, dynamic>,
-            'waypoints': allStops, 
+            'waypoints': allStops,
           });
         }).toList();
       }
@@ -133,7 +172,7 @@ class ApiService {
   Future<bool> createBus(String mac, String name) async {
     try {
       await _dio.post('/api/buses', data: {
-        'mac_address': mac, 
+        'mac_address': mac,
         'bus_name': name,
         'current_lat': 0.0,
         'current_lon': 0.0,
@@ -176,7 +215,8 @@ class ApiService {
 
   // ─── Air Quality ─────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> fetchHeatmapData({String timeRange = '1h'}) async {
+  Future<List<Map<String, dynamic>>> fetchHeatmapData(
+      {String timeRange = '1h'}) async {
     try {
       // Map '1h', '24h' etc to hours integer
       int hours = 1;
@@ -186,7 +226,8 @@ class ApiService {
         hours = (int.tryParse(timeRange.replaceAll('d', '')) ?? 1) * 24;
       }
 
-      final response = await _dio.get('/api/analytics/heatmap', queryParameters: {'hours': hours});
+      final response = await _dio
+          .get('/api/analytics/heatmap', queryParameters: {'hours': hours});
       if (response.data is List) {
         return List<Map<String, dynamic>>.from(response.data);
       }
@@ -235,7 +276,8 @@ class ApiService {
     }
   }
 
-  Future<bool> updatePMZone(String zoneId, Map<String, dynamic> zoneData) async {
+  Future<bool> updatePMZone(
+      String zoneId, Map<String, dynamic> zoneData) async {
     try {
       final response = await _dio.put('/api/pm_zones/\$zoneId', data: zoneData);
       return response.statusCode == 200;

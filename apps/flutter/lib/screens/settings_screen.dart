@@ -126,6 +126,20 @@ class SettingsScreen extends ConsumerWidget {
           ),
           _sectionCard(
             theme,
+            icon: Icons.description_outlined,
+            title: 'Terms of Service',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/legal-document?type=terms'),
+          ),
+          _sectionCard(
+            theme,
+            icon: Icons.privacy_tip_outlined,
+            title: 'Privacy Policy',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/legal-document?type=privacy'),
+          ),
+          _sectionCard(
+            theme,
             icon: Icons.feedback_outlined,
             title: 'Feedback',
             trailing: const Icon(Icons.chevron_right),

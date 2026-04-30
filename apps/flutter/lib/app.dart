@@ -17,6 +17,10 @@ import 'screens/testing_screen.dart';
 import 'screens/feedback_screen.dart';
 import 'screens/developer_mode_screen.dart';
 import 'screens/splash_screen.dart';
+import 'screens/legal_consent_screen.dart';
+import 'screens/legal_document_screen.dart';
+import 'screens/passenger_stats_screen.dart';
+import 'legal/legal_documents.dart';
 
 // Navigation keys for each tab branch
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -32,6 +36,24 @@ final goRouter = GoRouter(
       pageBuilder: (context, state) => const NoTransitionPage(
         child: SplashScreen(),
       ),
+    ),
+    GoRoute(
+      path: '/legal-consent',
+      name: 'legalConsent',
+      pageBuilder: (context, state) => const NoTransitionPage(
+        child: LegalConsentScreen(),
+      ),
+    ),
+    GoRoute(
+      path: '/legal-document',
+      name: 'legalDocument',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) {
+        final type = state.uri.queryParameters['type'] == 'privacy'
+            ? LegalDocumentType.privacy
+            : LegalDocumentType.terms;
+        return LegalDocumentScreen(type: type);
+      },
     ),
     // Shell route wraps the bottom navigation tabs
     ShellRoute(
@@ -119,6 +141,12 @@ final goRouter = GoRouter(
       name: 'developer',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const DeveloperModeScreen(),
+    ),
+    GoRoute(
+      path: '/passenger-stats',
+      name: 'passengerStats',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const PassengerStatsScreen(),
     ),
   ],
 );
