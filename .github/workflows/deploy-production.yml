@@ -1,0 +1,92 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "docker-compose.yml"
+      - "server/**"
+      - ".github/workflows/deploy-production.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH }}
+      MQTT_BROKER_HOST: ${{ vars.MQTT_BROKER_HOST }}
+      MQTT_BROKER_PORT: ${{ vars.MQTT_BROKER_PORT }}
+      MONGODB_URL: ${{ vars.MONGODB_URL }}
+      TZ: ${{ vars.TZ }}
+      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
+      RATE_LIMIT_PER_MINUTE: ${{ vars.RATE_LIMIT_PER_MINUTE }}
+      MAX_UPLOAD_SIZE: ${{ vars.MAX_UPLOAD_SIZE }}
+      OTA_FALLBACK_IP: ${{ vars.OTA_FALLBACK_IP }}
+      DB_FILE: ${{ vars.DB_FILE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start ssh-agent
+        run: |
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' | ssh-add -
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Build deployment env file
+        run: |
+          cat > .deploy.env <<EOF
+          MQTT_BROKER_HOST=$MQTT_BROKER_HOST
+          MQTT_BROKER_PORT=$MQTT_BROKER_PORT
+          MONGODB_URL=$MONGODB_URL
+          TZ=$TZ
+          API_SECRET_KEY=$API_SECRET_KEY
+          ADMIN_PASSWORD=$ADMIN_PASSWORD
+          CORS_ORIGINS=$CORS_ORIGINS
+          RATE_LIMIT_PER_MINUTE=$RATE_LIMIT_PER_MINUTE
+          MAX_UPLOAD_SIZE=$MAX_UPLOAD_SIZE
+          OTA_FALLBACK_IP=$OTA_FALLBACK_IP
+          DB_FILE=$DB_FILE
+          EOF
+
+      - name: Upload deployment env file
+        run: |
+          scp -P "${DEPLOY_PORT:-22}" .deploy.env "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/.env"
+
+      - name: Deploy over SSH
+        run: |
+          ssh -p "${DEPLOY_PORT:-22}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            DEPLOY_PATH="'${DEPLOY_PATH}'" \
+            DEPLOY_BRANCH="'${DEPLOY_BRANCH:-master}'" \
+            'bash -se' <<'EOF'
+          set -euo pipefail
+
+          cd "$DEPLOY_PATH"
+          git fetch origin
+          git checkout "$DEPLOY_BRANCH"
+          git pull --ff-only origin "$DEPLOY_BRANCH"
+
+          docker compose up -d --build
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health >/dev/null; then
+              echo "Deployment health check passed."
+              exit 0
+            fi
+            sleep 5
+          done
+
+          docker compose logs --tail=200
+          exit 1
+          EOF
