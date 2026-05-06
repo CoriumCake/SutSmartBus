@@ -1,46 +1,67 @@
-# 🚌 SUT Smart Bus
+# SUT Smart Bus
 
-A smart campus bus tracking system for Suranaree University of Technology — combining IoT hardware, a real-time backend, and a Flutter mobile app.
+SUT Smart Bus is a single repository for the mobile app, backend services, and ESP32 firmware used by the campus bus tracking system.
 
-## Repository Structure
+## Monorepo Layout
 
-```
+```text
 SutSmartBus/
-├── apps/
-│   └── flutter/         # Flutter mobile app
-├── server/              # FastAPI backend + Docker services
-├── hardware/            # ESP32 / Arduino firmware
-├── docker-compose.yml   # Root-level service orchestration
-└── README.md
+|-- apps/
+|   `-- flutter/      # Flutter client
+|-- server/           # FastAPI API, Docker config, scripts
+|-- hardware/         # ESP32 and sensor firmware
+|-- migrate/          # migration notes and architecture docs
+|-- docker-compose.yml
+`-- README.md
 ```
 
 ## Quick Start
 
-### Server (Docker)
+### Backend
+
+From the repository root:
 
 ```bash
-docker-compose up -d
+docker-compose up -d --build
+docker-compose logs -f
 ```
 
-This starts **MongoDB**, **Mosquitto MQTT**, and the **FastAPI server**.
+Health check:
+
+```bash
+curl http://localhost:8000/health
+```
 
 ### Flutter App
 
+From `apps/flutter/`:
+
 ```bash
-cd apps/flutter
 flutter pub get
 flutter run
+flutter analyze
+flutter test
+```
+
+If generated Dart code needs to be refreshed:
+
+```bash
+flutter pub run build_runner build --delete-conflicting-outputs
 ```
 
 ### Hardware
 
-See [`hardware/README.md`](hardware/README.md) for flashing instructions for each ESP32 module.
+Firmware lives in `hardware/`.
 
-## Tech Stack
+- `hardware/esp32_cam/`: passenger counting and camera unit
+- `hardware/pm/`: GPS and air-quality unit
+- `hardware/get_mac_address/`: helper sketch for device registration
 
-| Layer | Tech |
-|-------|------|
-| **Mobile** | Flutter, Riverpod, GoRouter, MQTT |
-| **Server** | FastAPI, Motor (MongoDB), Paho MQTT |
-| **Infra** | Docker, MongoDB 7, Eclipse Mosquitto |
-| **Hardware** | ESP32-CAM, PM sensors, Arduino framework |
+See [hardware/README.md](/C:/Users/maple/Documents/Coding/SutSmartBus/hardware/README.md) for setup details.
+
+## Repo Notes
+
+- Generated Flutter build output and local secrets are intentionally ignored.
+- Use [server/.env.example](/C:/Users/maple/Documents/Coding/SutSmartBus/server/.env.example) and [.env.example](/C:/Users/maple/Documents/Coding/SutSmartBus/.env.example) as templates for local configuration.
+- The repo is already organized as a monorepo, so cleanup is mostly about keeping build artifacts and tool-specific files out of source control.
+- GitHub Actions can read the same keys through repository `Secrets` and `Variables`, especially `API_SECRET_KEY` and `ADMIN_PASSWORD`.

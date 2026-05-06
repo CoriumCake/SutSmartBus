@@ -77,13 +77,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MQTT_BROKER_HOST=mosquitto
-      - MQTT_BROKER_PORT=1883
-      - MONGODB_URL=mongodb://mongodb:27017/sut_smart_bus
-      - TZ=Asia/Bangkok
-      # Production settings:
-      - API_SECRET_KEY=
-      - CORS_ORIGINS=*
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-mosquitto}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+      - MONGODB_URL=${MONGODB_URL:-mongodb://mongodb:27017/sut_smart_bus}
+      - TZ=${TZ:-Asia/Bangkok}
+      - API_SECRET_KEY=${API_SECRET_KEY:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-2097152}
+      - OTA_FALLBACK_IP=${OTA_FALLBACK_IP:-203.158.3.14}
+      - DB_FILE=${DB_FILE:-bus_passengers.db}
 
     volumes:
       - ./server/firmware:/app/firmware
