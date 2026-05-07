@@ -8,6 +8,26 @@ from datetime import datetime, timezone
 from . import crud, models, constants, state
 from core.config import settings
 
+
+def bus_document_to_app_payload(bus_doc: dict) -> dict:
+    """Normalize a Mongo bus document to the app's MQTT payload shape."""
+    if not bus_doc:
+        return {}
+
+    return {
+        "bus_mac": bus_doc.get("mac_address"),
+        "bus_name": bus_doc.get("bus_name"),
+        "lat": bus_doc.get("current_lat"),
+        "lon": bus_doc.get("current_lon"),
+        "pm2_5": bus_doc.get("pm2_5", 0.0),
+        "pm10": bus_doc.get("pm10", 0.0),
+        "temp": bus_doc.get("temp", 0.0),
+        "hum": bus_doc.get("hum", 0.0),
+        "seats_available": bus_doc.get("seats_available", 0),
+        "person_count": bus_doc.get("person_count", 0),
+        "rssi": bus_doc.get("rssi"),
+    }
+
 # Helper for Point in Polygon (Ray Casting)
 def is_point_in_polygon(lat: float, lon: float, polygon: list):
     num_vertices = len(polygon)
@@ -146,7 +166,7 @@ def on_message(client, userdata, msg):
                         # Broadcast to App
                         updated_bus = await crud.get_bus_by_mac(mac)
                         if updated_bus:
-                             app_payload = updated_bus.dict()
+                             app_payload = bus_document_to_app_payload(updated_bus)
                              print(f"📡 Broadcasting to app: passengers={current_passengers}, seats={seats_available}")
                              client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
                     

@@ -4,6 +4,7 @@
 #include <PsychicMqttClient.h>
 #include <Preferences.h>
 #include <WebServer.h>
+#include <esp_mac.h>
 #include "time.h"
 #define CAMERA_MODEL_AI_THINKER
 #include "camera_pins.h"
@@ -49,6 +50,7 @@ bool bgInitialized = false;
 bool mqttConfigured = false;
 char mqttUri[128];
 bool ringPending = false;
+bool mqttConnectAttempted = false;
 
 PsychicMqttClient mqttClient;
 Preferences preferences;
@@ -169,27 +171,57 @@ void setupMQTT() {
     snprintf(mqttUri, sizeof(mqttUri), "%s", MQTT_URI);
   }
 
+  bool isWebsocket = strncmp(mqttUri, "ws://", 5) == 0 || strncmp(mqttUri, "wss://", 6) == 0;
+  if (isWebsocket) {
+    const char* pathStart = strchr(mqttUri + (strncmp(mqttUri, "wss://", 6) == 0 ? 6 : 5), '/');
+    if (pathStart == nullptr) {
+      size_t baseLen = strlen(mqttUri);
+      if (baseLen + 6 < sizeof(mqttUri)) {
+        strncat(mqttUri, "/mqtt", sizeof(mqttUri) - baseLen - 1);
+      }
+    }
+  }
+
   if ((strncmp(mqttUri, "wss://", 6) == 0 || strncmp(mqttUri, "mqtts://", 8) == 0) && strlen(MQTT_ROOT_CA) > 0) {
     mqttClient.setCACert(MQTT_ROOT_CA);
   }
 
   mqttClient.onMessage(mqttCallback);
   mqttClient.onConnect([](bool sessionPresent) {
+    mqttConnectAttempted = false;
     Serial.println("✅ MQTT Connected");
     mqttClient.subscribe(MQTT_TOPIC_RING, 1);
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
     publishStatus();
   });
+  mqttClient.onDisconnect([](bool sessionPresent) {
+    mqttConnectAttempted = false;
+    Serial.println("MQTT disconnected");
+  });
+  mqttClient.onError([](esp_mqtt_error_codes_t error) {
+    mqttConnectAttempted = false;
+    Serial.printf("MQTT error type=%d tls=%d stack=%d sock=%d\n",
+      error.error_type,
+      error.esp_tls_last_esp_err,
+      error.esp_tls_stack_err,
+      error.esp_transport_sock_errno
+    );
+  });
   mqttClient.setServer(mqttUri);
   mqttClient.setClientId(MQTT_CLIENT_ID);
+  mqttClient.setAutoReconnect(true);
+  mqttClient.setKeepAlive(30);
+  Serial.printf("MQTT Final URI: %s\n", mqttUri);
   mqttConfigured = true;
 }
 
 void reconnectMQTT() {
   if (!mqttConfigured) return;
+  if (mqttConnectAttempted) return;
   static unsigned long lastMqtt = 0;
   if (millis() - lastMqtt < 10000) return;
   lastMqtt = millis();
+  mqttConnectAttempted = true;
   Serial.println("🔌 MQTT Reconnecting...");
   mqttClient.connect();
 }
@@ -314,7 +346,7 @@ void setup() {
   
   // Get MAC immediately
   uint8_t mac[6];
-  WiFi.macAddress(mac);
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
   snprintf(bus_mac, 18, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   if (strlen(BUS_MAC_ALIAS) > 0) {
     snprintf(reported_bus_mac, sizeof(reported_bus_mac), "%s", BUS_MAC_ALIAS);
