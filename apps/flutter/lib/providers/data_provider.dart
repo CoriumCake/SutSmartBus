@@ -180,14 +180,19 @@ class DataNotifier extends StateNotifier<DataState> {
     // If hardware doesn't send bus_mac, we default to the mock MAC
     // In a multi-bus system, hardware should be updated to send its MAC
     final busMac = data['bus_mac'] as String? ?? 'ESP32-CAM-01'; 
+    final busName = (data['bus_name'] as String?)?.trim();
     final count = data['count'] as int?; 
     if (count == null) return;
 
     final buses = [...state.buses];
-    final idx = buses.indexWhere((b) => b.busMac == busMac);
+    int idx = buses.indexWhere((b) => b.busMac == busMac);
+    if (idx < 0 && busName != null && busName.isNotEmpty) {
+      idx = buses.indexWhere((b) => b.busName.trim() == busName);
+    }
 
     if (idx >= 0) {
       buses[idx] = buses[idx].copyWith(
+        busName: (busName != null && busName.isNotEmpty) ? busName : buses[idx].busName,
         personCount: count,
         seatsAvailable: (33 - count).clamp(0, 33), // Use TOTAL_SEATS = 33
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
@@ -196,7 +201,7 @@ class DataNotifier extends StateNotifier<DataState> {
       buses.add(Bus(
         id: busMac,
         busMac: busMac,
-        busName: data['bus_name'] as String? ??
+        busName: busName ??
             'Bus-${busMac.length >= 4 ? busMac.substring(busMac.length - 4) : busMac}',
         personCount: count,
         seatsAvailable: (33 - count).clamp(0, 33),

@@ -142,17 +142,33 @@ def on_message(client, userdata, msg):
             try:
                 data = json.loads(payload_str)
                 bus_mac = data.get('bus_mac', constants.BUS_MAC_MOCK)
+                bus_name = (data.get('bus_name') or '').strip() or None
                 current_passengers = data.get('count', 0)
+
+                resolved_bus = None
+                if state.state.main_loop:
+                    async def resolve_bus():
+                        bus = await crud.get_bus_by_mac(bus_mac)
+                        if bus is None and bus_name:
+                            bus = await crud.get_bus_by_name(bus_name)
+                        return bus
+
+                    resolved_bus = asyncio.run_coroutine_threadsafe(
+                        resolve_bus(),
+                        state.state.main_loop,
+                    ).result(timeout=1)
+
+                resolved_mac = resolved_bus.get("mac_address") if resolved_bus else bus_mac
                 
                 # Store in SQLite history
                 from .analytics import record_passenger_count
-                record_passenger_count(bus_mac, current_passengers)
+                record_passenger_count(resolved_mac, current_passengers)
                 
                 # Update global count in shared state
                 with state.state.passenger_lock:
                     state.state.current_passengers = current_passengers
                 
-                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Door Event - Bus {bus_mac}: {current_passengers} pax")
+                print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Door Event - Bus {resolved_mac}: {current_passengers} pax")
                 
                 # Sync with Seats in MongoDB
                 if state.state.main_loop:
@@ -169,7 +185,7 @@ def on_message(client, userdata, msg):
                              print(f"📡 Broadcasting to app: passengers={current_passengers}, seats={seats_available}")
                              client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
                     
-                    fut = asyncio.run_coroutine_threadsafe(sync_seats(bus_mac), state.state.main_loop)
+                    fut = asyncio.run_coroutine_threadsafe(sync_seats(resolved_mac), state.state.main_loop)
                     fut.add_done_callback(log_future_done)
                 
                 # Compatibility with testing screen

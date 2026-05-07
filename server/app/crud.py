@@ -21,6 +21,9 @@ async def get_bus(bus_id: str):
 async def get_bus_by_mac(mac_address: str):
     return await bus_collection.find_one({"mac_address": mac_address})
 
+async def get_bus_by_name(bus_name: str):
+    return await bus_collection.find_one({"bus_name": bus_name})
+
 async def get_buses(skip: int = 0, limit: int = 100):
     buses = await bus_collection.find().skip(skip).limit(limit).to_list(limit)
     print(f"DEBUG: get_buses returning {len(buses)} buses")
