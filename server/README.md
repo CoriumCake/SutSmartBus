@@ -1,100 +1,60 @@
-# SUT Smart Bus - Backend Server
+# SUT Smart Bus Server
 
-FastAPI backend server for the SUT Smart Bus tracking system.
+FastAPI backend for the SUT Smart Bus monorepo.
 
-**🌐 Public URL:** https://smartbus.catcode.tech
+## Run Locally
 
----
+From the repository root:
 
-## 🏗️ Architecture
-
-This server runs inside **Docker (WSL)** on Windows Server 2022. It uses **Cloudflare Tunnel** to securely expose the API to the internet without opening firewall ports.
-
-| Component | Technology | Description |
-|-----------|------------|-------------|
-| **Server** | FastAPI (Python) | Main API logic |
-| **Database** | MongoDB | Stores routes, bus data |
-| **Broker** | Mosquitto MQTT | Real-time sensor data |
-| **Ingress** | Cloudflare Tunnel | Public HTTPS access |
-| **Auth** | API Key | Secures API endpoints |
-
----
-
-## 🚀 Deployment (WSL + Docker)
-
-### 1. Prerequisites
--   **Docker Desktop** (configured for WSL 2)
--   **Cloudflared** (Windows executable)
-
-### 2. Start the Server
-Run these commands inside your **WSL Terminal**:
 ```bash
-# Start all services (Server, Mongo, MQTT)
 docker-compose up -d --build
-
-# View logs
 docker-compose logs -f
 ```
 
-### 3. Start the Tunnel
-Run this command in **Windows PowerShell**:
-```powershell
-# Start the secure tunnel to https://smartbus.catcode.tech
-.\cloudflared.exe tunnel --config .cloudflared\config.yml run
-```
+Health check:
 
-> **Note:** Because the app runs in WSL, we use a Windows Port Proxy to forward traffic.
-> If the tunnel fails to connect, checks `walkthrough.md` for instructions on updating the WSL IP.
-
----
-
-## 🔐 Authentication
-
-All API endpoints (except `/health` and `/`) require an API Key.
-
--   **Header Name:** `X-API-Key`
--   **Key:** `d495128f-9bf7-4f98-8772-65936345aadf` (Set in `docker-compose.yml`)
-
-**Example Request:**
 ```bash
-curl -H "X-API-Key: d495128f-9bf7-4f98-8772-65936345aadf" https://smartbus.catcode.tech/api/buses
+curl http://localhost:8000/health
 ```
 
----
+## Structure
 
-## 📡 API Endpoints
-
-Full documentation is available at: `https://smartbus.catcode.tech/docs`
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check (No Auth) |
-| `/api/buses` | GET | List all active buses |
-| `/api/routes` | GET | List bus routes |
-| `/api/ring` | POST | Trigger bus buzzer |
-| `/api/firmware/upload` | POST | Upload OTA firmware |
-| `/api/ota/trigger` | POST | Trigger remote update |
-| `/dashboard` | GET | Real-time web dashboard |
-
----
-
-## 📁 Project Structure
-
-```
-├── app/
-│   ├── main.py         # Application entry point
-│   ├── mqtt.py         # MQTT logic
-│   └── ...
-├── core/
-│   ├── auth.py         # API Key Middleware
-│   └── config.py       # Configuration loader
-├── .cloudflared/       # Cloudflare Tunnel config
-├── docker-compose.yml  # Container orchestration
-├── Dockerfile          # Server image definition
-└── README.md           # This file
+```text
+server/
+|-- app/         # FastAPI app, routers, data access
+|-- core/        # shared config and auth helpers
+|-- routes/      # route and PM zone JSON data
+|-- scripts/     # setup and operational helpers
+|-- telemetry/   # telemetry-side utilities
+|-- Dockerfile
+`-- requirements.txt
 ```
 
-## Related Repositories
+## Notes
 
--   [sut-smart-bus-app](https://github.com/YOUR_USERNAME/sut-smart-bus-app) - Mobile app
--   [sut-smart-bus-hardware](https://github.com/YOUR_USERNAME/sut-smart-bus-hardware) - ESP32 firmware
+- Copy `server/.env.example` if you want local environment overrides.
+- The Docker stack expects MongoDB and Mosquitto from the root `docker-compose.yml`.
+- This folder lives in the same repository as the Flutter app and ESP32 firmware.
+
+## Cloudflare Tunnel
+
+For production, you can expose the FastAPI API and MQTT WebSocket endpoint through Cloudflare Tunnel instead of opening router port forwards for `8000` and `9001`.
+
+1. Copy `server/.env.cloudflare.example` to `server/.env.cloudflare`.
+2. In Cloudflare Zero Trust, create a tunnel using the Docker option and paste the generated token into `server/.env.cloudflare`.
+3. In the Cloudflare dashboard, point your public hostnames to:
+   - `https://api.your-domain.com` -> `http://server:8000`
+   - `https://mqtt.your-domain.com` -> `http://mosquitto:9001`
+4. Start the stack with the tunnel override:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+```
+
+This override keeps:
+
+- `8000` bound to `127.0.0.1` on the host
+- `9001` bound to `127.0.0.1` on the host
+- `1883` still published directly for raw MQTT device traffic
+
+Important: standard Cloudflare Tunnel does not replace raw MQTT/TCP on port `1883`. ESP32 devices using direct MQTT still need a direct reachable broker, or you will need a separate MQTT-over-WebSocket/TLS migration plan.

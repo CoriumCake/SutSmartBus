@@ -1,74 +1,66 @@
 @echo off
-:: =============================================================================
-:: Cloudflare Tunnel Setup Script for SUT Smart Bus
-:: =============================================================================
-:: This script helps you set up Cloudflare Tunnel for public access
-:: =============================================================================
+setlocal
 
 echo ============================================
-echo  Cloudflare Tunnel Setup
+echo  SUT Smart Bus Cloudflare Tunnel Setup
 echo ============================================
 echo.
 
-:: Check for Admin rights
-net session >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ERROR: Please run this script as Administrator!
-    pause
-    exit /b 1
-)
+set "ROOT_DIR=%~dp0..\.."
+pushd "%ROOT_DIR%"
 
-:: Check if cloudflared is installed
-cloudflared --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo Cloudflared not found. Downloading...
-    echo.
-    
-    :: Download cloudflared
-    curl -L -o cloudflared.msi https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi
-    
-    if exist cloudflared.msi (
-        echo Installing cloudflared...
-        msiexec /i cloudflared.msi /quiet
-        del cloudflared.msi
-        
-        :: Add to PATH
-        setx PATH "%PATH%;C:\Program Files (x86)\cloudflared" /M
-        echo Cloudflared installed!
+if not exist "server\.env.cloudflare" (
+    if exist "server\.env.cloudflare.example" (
+        copy /Y "server\.env.cloudflare.example" "server\.env.cloudflare" >nul
+        echo Created server\.env.cloudflare from example.
+        echo Edit that file and paste your Cloudflare tunnel token.
+        echo.
     ) else (
-        echo ERROR: Failed to download cloudflared.
-        echo Please download manually from:
-        echo https://github.com/cloudflare/cloudflared/releases
-        pause
+        echo ERROR: server\.env.cloudflare.example was not found.
+        popd
         exit /b 1
     )
 )
 
+findstr /C:"replace-with-your-cloudflare-tunnel-token" "server\.env.cloudflare" >nul
+if %errorlevel% equ 0 (
+    echo Token placeholder is still present in server\.env.cloudflare
+    echo.
+    echo Get a Docker tunnel token from:
+    echo   Cloudflare Zero Trust ^> Networks ^> Tunnels ^> Create a tunnel ^> Docker
+    echo.
+    echo After pasting the token, start production mode with:
+    echo   docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+    echo.
+    popd
+    pause
+    exit /b 0
+)
+
+echo Starting stack with Cloudflare Tunnel...
+docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+
+if %errorlevel% neq 0 (
+    echo.
+    echo ERROR: Failed to start the stack.
+    popd
+    pause
+    exit /b 1
+)
+
 echo.
-echo ============================================
-echo  Cloudflared is installed!
-echo ============================================
+echo Stack started.
 echo.
-echo Next steps:
+echo Useful commands:
+echo   docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml logs -f cloudflared
+echo   docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml ps
+echo   docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml down
 echo.
-echo 1. Login to Cloudflare:
-echo    cloudflared tunnel login
+echo Note:
+echo   - FastAPI on port 8000 is now bound to localhost only.
+echo   - MQTT WebSocket on port 9001 is now bound to localhost only.
+echo   - Raw MQTT on port 1883 is still exposed directly for device traffic.
 echo.
-echo 2. Create a tunnel:
-echo    cloudflared tunnel create sutsmartbus
-echo.
-echo 3. Configure the tunnel (edit config.yml):
-echo    See: C:\Users\%USERNAME%\.cloudflared\config.yml
-echo.
-echo 4. Route DNS (replace YOUR_TUNNEL_ID):
-echo    cloudflared tunnel route dns sutsmartbus smartbus.yourdomain.com
-echo    cloudflared tunnel route dns sutsmartbus mqtt.yourdomain.com
-echo.
-echo 5. Run the tunnel:
-echo    cloudflared tunnel run sutsmartbus
-echo.
-echo 6. Or install as Windows service:
-echo    cloudflared service install
-echo    net start cloudflared
-echo.
+
+popd
 pause

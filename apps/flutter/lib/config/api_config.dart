@@ -22,7 +22,11 @@ class ApiConfig {
   /// MQTT WebSocket URL
   static String get mqttWsUrl {
     if (Env.isTunnelMode) {
-      // Cloudflare Tunnels use SSL (wss://) on the public domain
+      // Cloudflare Tunnel hostnames usually terminate TLS on 443,
+      // so we only append a port when a non-default port is configured.
+      if (Env.mqttWebSocketPort == 443) {
+        return 'wss://${Env.mqttBrokerHost}';
+      }
       return 'wss://${Env.mqttBrokerHost}:${Env.mqttWebSocketPort}';
     }
 

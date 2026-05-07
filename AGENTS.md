@@ -1,22 +1,32 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is split by runtime. `apps/flutter/` contains the production mobile client with source in `lib/`, assets in `assets/`, and tests in `test/`. `server/` holds the FastAPI backend: HTTP routes live in `app/routers/`, shared models and schemas in `app/`, and config/auth helpers in `core/`. `hardware/` contains ESP32 and Arduino firmware. Root `docker-compose.yml` starts MongoDB, Mosquitto, and the API together.
+`apps/flutter/` contains the Flutter client. Main app code lives in `lib/` with feature areas such as `screens/`, `providers/`, `services/`, and `widgets/`; tests live in `apps/flutter/test/`; static assets are under `apps/flutter/assets/`.
+
+`server/` contains the FastAPI backend. Core API code is in `server/app/`, shared config and auth helpers are in `server/core/`, route data is stored in `server/routes/`, and operational scripts such as seed and maintenance helpers live beside the app code. `hardware/` holds ESP32 and sensor firmware projects, and `migrate/` contains migration notes and architecture docs rather than runtime code.
 
 ## Build, Test, and Development Commands
-Use the command set for the area you are changing.
+Use the repo root for containerized backend work:
 
-- `docker-compose up -d --build`: start the backend stack locally.
-- `docker-compose logs -f server`: follow API logs.
-- `cd apps/flutter && flutter pub get && flutter run`: run the Flutter app.
-- `cd apps/flutter && flutter test`: run Flutter tests.
-- `cd apps/flutter && flutter analyze`: run Dart static analysis.
+- `docker-compose up -d --build` starts MongoDB, Mosquitto, and the FastAPI server.
+- `docker-compose logs -f` tails service logs.
+- `docker-compose down` stops the stack.
+
+Use `apps/flutter/` for mobile development:
+
+- `flutter pub get` installs Dart dependencies.
+- `flutter run` launches the app on a connected device or emulator.
+- `flutter analyze` runs static analysis from `analysis_options.yaml`.
+- `flutter test` runs widget and provider tests.
+- `flutter pub run build_runner build --delete-conflicting-outputs` regenerates Riverpod, Hive, and Mockito code.
 
 ## Coding Style & Naming Conventions
-Dart files use `snake_case` filenames, `PascalCase` types, and the `flutter_lints` rules from `analysis_options.yaml`. Python modules in `server/` follow `snake_case` and should stay small and router-focused. Prefer descriptive JSON names like `route_*.json`. Keep secrets in local env files copied from `apps/flutter/lib/config/env.dart.example` or `server/.env.example`, never in source.
+Follow existing project defaults: 4-space indentation in Python and standard Flutter formatting in Dart. Keep Dart files `snake_case.dart`, classes `PascalCase`, variables and methods `camelCase`. Python modules are also `snake_case.py`. Prefer small, feature-focused files in `lib/` and keep generated `*.mocks.dart` files out of manual edits. Use `flutter analyze` before opening a PR; there is no separate Python formatter configured in this repo.
 
 ## Testing Guidelines
-Add or update tests with every behavior change. Place Flutter tests in `apps/flutter/test/` using `*_test.dart`. Run the narrowest relevant suite first, then the full Flutter suite before opening a PR.
+Flutter tests live in `apps/flutter/test/` and use `flutter_test` plus `mockito`. Name tests with the `_test.dart` suffix, matching the production feature where possible, for example `test_mode_screen_test.dart`. The backend currently has no committed automated test suite, so backend changes should include at least a local API smoke check against `http://localhost:8000/health` and relevant endpoints.
 
 ## Commit & Pull Request Guidelines
-Recent history mixes plain summaries with Conventional Commit prefixes; prefer the clearer prefixed style: `feat:`, `fix:`, `chore:`. Keep each commit scoped to one change. Pull requests should include a short problem statement, the chosen fix, test results, and screenshots or recordings for UI work. Link related issues and note any config or migration steps explicitly.
+Recent history uses short, imperative messages and often follows conventional prefixes such as `feat:`, `fix:`, `chore:`, and `backup:`. Keep commits focused and descriptive, for example `fix: handle offline MQTT reconnect in dashboard`.
+
+Pull requests should include a concise summary, affected areas (`apps/flutter`, `server`, `hardware`), linked issues when applicable, and screenshots or screen recordings for UI changes. Call out config changes to `.env`, Docker, MQTT, or firmware behavior explicitly.

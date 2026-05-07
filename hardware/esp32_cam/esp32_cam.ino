@@ -23,22 +23,30 @@ String otaVersion = "";
 bool IS_RIGHT_TO_LEFT_ENTER = false;
 
 // Detection Constants (Optimized)
-int MOTION_THRESHOLD = 40;      // Difference in pixel value to count as motion
-int TRIGGER_THRESHOLD = 1200;   // Number of motion pixels to trigger a zone
+int MOTION_THRESHOLD = 30;      // Lower pixel-difference threshold for easier motion pickup
+int TRIGGER_THRESHOLD_L = 900;  // Left zone trigger threshold
+int TRIGGER_THRESHOLD_R = 700;  // Right zone is weaker, so trigger it sooner
+int NOISE_THRESHOLD_BOTH = 1800; // Re-zero only when both zones are heavily disturbed
+int NOISE_THRESHOLD_TOTAL = 6200; // Whole-frame disturbance threshold
+int CLEAR_THRESHOLD_L = 250;    // Require both zones to fall well below trigger before re-arming
+int CLEAR_THRESHOLD_R = 250;
+unsigned long CLEAR_HOLD_MS = 250; // Quiet period before the detector is ready again
 int ZONE_L = 60;                // Left line boundary (0-160)
 int ZONE_R = 100;               // Right line boundary (0-160)
-unsigned long COOLDOWN = 1200;  // ms between counts
+unsigned long COOLDOWN = 700;   // ms between counts
 
 // Globals
 int passengerCount = 0;
 int currentState = 0;           // 0=None, 1=Left, 2=Right
 unsigned long lastCountTime = 0;
 unsigned long lastMotionTime = 0;
+unsigned long clearStartTime = 0;
 uint8_t background[160 * 80];   // Background reference (160x80 ROI)
 char bus_mac[18];
 bool wifiConnected = false;
 bool bgInitialized = false;
 bool mqttConfigured = false;
+char mqttUri[128];
 
 PsychicMqttClient mqttClient;
 Preferences preferences;
@@ -123,16 +131,15 @@ void setupMQTT() {
     Serial.println("⚠️ MQTT Blocked (Placeholder detected in config.h)");
     return;
   }
-  char uri[128];
-  snprintf(uri, 128, "mqtt://%s:%d", MQTT_SERVER, MQTT_PORT);
-  Serial.printf("🔌 MQTT Configured: %s\n", uri);
+  snprintf(mqttUri, sizeof(mqttUri), "mqtt://%s:%d", MQTT_SERVER, MQTT_PORT);
+  Serial.printf("🔌 MQTT Configured: %s\n", mqttUri);
 
   mqttClient.onMessage(mqttCallback);
   mqttClient.onConnect([](bool sessionPresent) {
     Serial.println("✅ MQTT Connected");
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
   });
-  mqttClient.setServer(uri);
+  mqttClient.setServer(mqttUri);
   mqttClient.setClientId(MQTT_CLIENT_ID);
   mqttConfigured = true;
 }
@@ -357,17 +364,20 @@ void loop() {
     }
   }
 
-  // Noise Filter: If > 70% of a zone changes, it's global noise (lighting/shake)
-  if (motionL > 3500 || motionR > 3500) {
+  // Noise Filter: only treat it as global noise when both zones surge together.
+  if (motionL > NOISE_THRESHOLD_BOTH &&
+      motionR > NOISE_THRESHOLD_BOTH &&
+      (motionL + motionR) > NOISE_THRESHOLD_TOTAL) {
     bgInitialized = false; 
     currentState = 0;
+    clearStartTime = 0;
     Serial.println("🌫️ Massive Noise - Re-zeroing...");
     esp_camera_fb_return(fb);
     return;
   }
 
-  bool triggerL = (motionL > TRIGGER_THRESHOLD);
-  bool triggerR = (motionR > TRIGGER_THRESHOLD);
+  bool triggerL = (motionL > TRIGGER_THRESHOLD_L);
+  bool triggerR = (motionR > TRIGGER_THRESHOLD_R);
 
   // Update last motion time for timeout/clear logic
   if (triggerL || triggerR) {
@@ -383,14 +393,21 @@ void loop() {
 
   // WAIT_CLEAR runs outside cooldown so back-to-back people aren't missed
   if (currentState == 3) {
-    if (!triggerL && !triggerR) {
-      currentState = 0;
-      Serial.println("✅ Zone Cleared, Ready");
+    bool zonesQuiet = (motionL < CLEAR_THRESHOLD_L && motionR < CLEAR_THRESHOLD_R);
+    if (zonesQuiet) {
+      if (clearStartTime == 0) clearStartTime = millis();
+      if (millis() - clearStartTime >= CLEAR_HOLD_MS) {
+        currentState = 0;
+        clearStartTime = 0;
+        Serial.println("✅ Zone Cleared, Ready");
+      }
+    } else {
+      clearStartTime = 0;
     }
   }
 
   // Robust State Machine (cooldown only guards counting, not clearing)
-  if (millis() - lastCountTime > COOLDOWN) {
+  if (true) {
     if (currentState == 0) { // CLEAR
       if (triggerL && !triggerR) {
         currentState = 1; // ENTERED_L
@@ -401,7 +418,7 @@ void loop() {
       }
     }
     else if (currentState == 1) { // ENTERED_L
-      if (triggerR) {
+      if (triggerR && millis() - lastCountTime > COOLDOWN) {
         // Event: L -> R
         if (IS_RIGHT_TO_LEFT_ENTER) {
           if (passengerCount > 0) passengerCount--;
@@ -415,14 +432,14 @@ void loop() {
         preferences.putInt("cnt", passengerCount);
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR
-        beep(200);
+        beep(80);
       } else if (millis() - lastMotionTime > 2000) {
         currentState = 0;
         Serial.println("⏱️ State Reset Left (Timeout)");
       }
     }
     else if (currentState == 2) { // ENTERED_R
-      if (triggerL) {
+      if (triggerL && millis() - lastCountTime > COOLDOWN) {
         // Event: R -> L
         if (IS_RIGHT_TO_LEFT_ENTER) {
           passengerCount++;
@@ -436,7 +453,7 @@ void loop() {
         preferences.putInt("cnt", passengerCount);
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR
-        beep(200);
+        beep(80);
       } else if (millis() - lastMotionTime > 2000) {
         currentState = 0;
         Serial.println("⏱️ State Reset Right (Timeout)");
