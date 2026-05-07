@@ -158,13 +158,12 @@ def on_message(client, userdata, msg):
                 if state.state.main_loop:
                     async def sync_seats(mac):
                         seats_available = max(0, constants.TOTAL_SEATS - current_passengers)
-                        await crud.update_bus_location(
+                        updated_bus = await crud.update_bus_location(
                             mac_address=mac, lat=None, lon=None,
                             seats_available=seats_available, pm2_5=0, pm10=0,
                             person_count=current_passengers
                         )
                         # Broadcast to App
-                        updated_bus = await crud.get_bus_by_mac(mac)
                         if updated_bus:
                              app_payload = bus_document_to_app_payload(updated_bus)
                              print(f"📡 Broadcasting to app: passengers={current_passengers}, seats={seats_available}")

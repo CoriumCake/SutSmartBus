@@ -512,6 +512,7 @@ void loop() {
           sendMQTT("enter");
         }
         preferences.putInt("cnt", passengerCount);
+        publishStatus();
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR
         beep(80);
@@ -533,6 +534,7 @@ void loop() {
           sendMQTT("exit");
         }
         preferences.putInt("cnt", passengerCount);
+        publishStatus();
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR
         beep(80);

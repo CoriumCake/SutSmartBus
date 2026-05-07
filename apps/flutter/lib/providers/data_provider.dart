@@ -192,8 +192,18 @@ class DataNotifier extends StateNotifier<DataState> {
         seatsAvailable: (33 - count).clamp(0, 33), // Use TOTAL_SEATS = 33
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       );
-      state = state.copyWith(buses: buses);
+    } else if (buses.length < 50) {
+      buses.add(Bus(
+        id: busMac,
+        busMac: busMac,
+        busName: data['bus_name'] as String? ??
+            'Bus-${busMac.length >= 4 ? busMac.substring(busMac.length - 4) : busMac}',
+        personCount: count,
+        seatsAvailable: (33 - count).clamp(0, 33),
+        lastUpdated: DateTime.now().millisecondsSinceEpoch,
+      ));
     }
+    state = state.copyWith(buses: buses);
   }
 
   /// Manually inject or update a bus in the local state (used by simulation)
@@ -225,14 +235,14 @@ class DataNotifier extends StateNotifier<DataState> {
     if (idx >= 0) {
       buses[idx] = buses[idx].copyWith(
         busName: data['bus_name'] as String? ?? buses[idx].busName,
-        currentLat: (data['lat'] as num?)?.toDouble(),
-        currentLon: (data['lon'] as num?)?.toDouble(),
-        seatsAvailable: data['seats_available'] as int?,
-        pm25: (data['pm2_5'] as num?)?.toDouble(),
-        pm10: (data['pm10'] as num?)?.toDouble(),
-        temp: (data['temp'] as num?)?.toDouble(),
-        hum: (data['hum'] as num?)?.toDouble(),
-        personCount: data['person_count'] as int?,
+        currentLat: (data['lat'] as num?)?.toDouble() ?? buses[idx].currentLat,
+        currentLon: (data['lon'] as num?)?.toDouble() ?? buses[idx].currentLon,
+        seatsAvailable: data['seats_available'] as int? ?? buses[idx].seatsAvailable,
+        pm25: (data['pm2_5'] as num?)?.toDouble() ?? buses[idx].pm25,
+        pm10: (data['pm10'] as num?)?.toDouble() ?? buses[idx].pm10,
+        temp: (data['temp'] as num?)?.toDouble() ?? buses[idx].temp,
+        hum: (data['hum'] as num?)?.toDouble() ?? buses[idx].hum,
+        personCount: data['person_count'] as int? ?? buses[idx].personCount,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       );
     } else if (buses.length < 50) {
