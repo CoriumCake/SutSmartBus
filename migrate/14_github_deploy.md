@@ -6,7 +6,7 @@ This repository can deploy the backend automatically from GitHub Actions after p
 
 The workflow in `.github/workflows/deploy-production.yml`:
 
-1. connects to your server over SSH
+1. runs on a self-hosted GitHub Actions runner on the server
 2. updates the repo checkout
 3. writes the root `.env` file from GitHub secrets and variables
 4. runs `docker compose up -d --build`
@@ -14,9 +14,10 @@ The workflow in `.github/workflows/deploy-production.yml`:
 
 ## Prerequisites on the server
 
-- Docker and Docker Compose available from the shell used by SSH
+- Docker and Docker Compose available on the server
 - a clone of this repository already present on the server
-- the SSH user can run `docker compose` in the repo directory
+- a self-hosted GitHub Actions runner installed on the server
+- the runner user can execute the deployment commands in the repo directory
 - the server can reach GitHub to pull changes
 
 ## Recommended GitHub production environment
@@ -25,10 +26,6 @@ Create a GitHub Actions environment named `production`.
 
 ### Environment secrets
 
-- `DEPLOY_HOST`
-- `DEPLOY_PORT`
-- `DEPLOY_USER`
-- `DEPLOY_SSH_KEY`
 - `DEPLOY_PATH`
 - `API_SECRET_KEY`
 - `ADMIN_PASSWORD`
@@ -46,15 +43,13 @@ Create a GitHub Actions environment named `production`.
 - `OTA_FALLBACK_IP` = `203.158.3.14`
 - `DB_FILE` = `bus_passengers.db`
 
-## SSH key setup
+## Self-hosted runner setup
 
-Generate a dedicated deploy key pair and add the public key to the target server user:
+Install a Linux self-hosted runner from:
 
-```bash
-ssh-keygen -t ed25519 -C "github-actions-deploy"
-```
+- `Settings` -> `Actions` -> `Runners` -> `New self-hosted runner`
 
-Save the private key content as the GitHub secret `DEPLOY_SSH_KEY`.
+Run the GitHub-provided commands as a non-root user on the server, then install the runner as a service.
 
 ## First-time server prep
 
