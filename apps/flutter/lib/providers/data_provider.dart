@@ -44,6 +44,7 @@ class DataNotifier extends StateNotifier<DataState> {
   final ApiService _api;
   final MqttService _mqtt;
   Timer? _pollingTimer;
+  Timer? _presenceTimer;
 
   DataNotifier(this._api, this._mqtt) : super(DataState()) {
     _initialize();
@@ -98,6 +99,13 @@ class DataNotifier extends StateNotifier<DataState> {
       _pollingTimer = Timer.periodic(
         const Duration(seconds: 10),
         (_) => refreshBuses(),
+      );
+
+      // 5. Force lightweight UI refreshes so offline/online status
+      // can age out even when no new MQTT or API payload arrives.
+      _presenceTimer = Timer.periodic(
+        const Duration(seconds: 5),
+        (_) => state = state.copyWith(),
       );
 
       state = state.copyWith(loading: false);
@@ -296,6 +304,7 @@ class DataNotifier extends StateNotifier<DataState> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _presenceTimer?.cancel();
     _mqtt.disconnect();
     super.dispose();
   }

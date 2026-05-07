@@ -6,6 +6,7 @@ import '../providers/debug_provider.dart';
 import '../providers/language_provider.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
+import '../services/bus_service.dart';
 import '../services/route_storage_service.dart';
 import '../services/bus_mapping_service.dart';
 import '../utils/route_helpers.dart';
@@ -26,6 +27,7 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
   Map<String, BusRouteInfo> _busRoutes = {};
   List<BusRoute> _localRoutes = [];
   int _passengerCount = 0;
+  final BusService _busService = BusService();
 
   @override
   void initState() {
@@ -159,6 +161,21 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
     await _fetchPassengerCount();
   }
 
+  Future<void> _ringBus(Bus bus) async {
+    try {
+      await _busService.ringBell(bus.busMac);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Ring signal sent to ${bus.busName}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send ring: $e')),
+      );
+    }
+  }
+
   void _handleBusPress(Bus bus) {
     final routeInfo = _busRoutes[bus.busMac];
     context.go('/map', extra: {
@@ -246,6 +263,7 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
                           routeInfo: routeInfo,
                           passengerCount: _passengerCount,
                           onTap: () => _handleBusPress(bus),
+                          onRingBell: () => _ringBus(bus),
                         );
                       },
                     ),
