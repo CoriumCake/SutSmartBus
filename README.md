@@ -32,6 +32,16 @@ Health check:
 curl http://localhost:8000/health
 ```
 
+### Production Tunnel
+
+To stop exposing the API through router port forwarding, start the stack with the Cloudflare Tunnel override:
+
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build
+```
+
+Setup steps live in [server/README.md](server/README.md). This production overlay moves `8000` and `9001` to localhost-only bindings and runs `cloudflared` in Docker.
+
 ### Flutter App
 
 From `apps/flutter/`:

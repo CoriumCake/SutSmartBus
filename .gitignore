@@ -1,43 +1,59 @@
-# =============================================================================
-# SUT Smart Bus Monorepo - Git Ignore
-# =============================================================================
+# Monorepo-wide ignores
 
-# ── Node / Expo (apps/mobile) ──────────────────────────────────────────────
-node_modules/
-.expo/
-dist/
-*.tsbuildinfo
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# ── Python (server) ────────────────────────────────────────────────────────
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.eggs/
-venv/
-.venv/
-env/
-.env
-
-# ── Arduino / PlatformIO (hardware) ───────────────────────────────────────
-.pio/
-.vscode/
-*.o
-*.elf
-*.hex
-*.bin
-
-# ── Docker ─────────────────────────────────────────────────────────────────
-*.log
-
-# ── IDE / OS ───────────────────────────────────────────────────────────────
+# OS / editors
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
 .idea/
 *.iml
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+server/.env
+server/.env.local
+
+# Flutter / Dart
+apps/flutter/.dart_tool/
+apps/flutter/.flutter-plugins
+apps/flutter/.flutter-plugins-dependencies
+apps/flutter/.pub/
+apps/flutter/.pub-cache/
+apps/flutter/build/
+apps/flutter/android/.gradle/
+apps/flutter/android/local.properties
+apps/flutter/android/app/debug/
+apps/flutter/android/app/profile/
+apps/flutter/android/app/release/
+apps/flutter/android/build/
+apps/flutter/ios/Flutter/Generated.xcconfig
+apps/flutter/ios/Flutter/flutter_export_environment.sh
+apps/flutter/ios/Flutter/ephemeral/
+apps/flutter/lib/config/env.dart
+
+# Firmware / Arduino
+.pio/
+.vscode/
+*.o
+*.elf
+*.hex
+*.bin
+hardware/esp32_cam/config.h
+hardware/pm/config.h
+

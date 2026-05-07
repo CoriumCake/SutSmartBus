@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import '../core/config.dart'; // Assuming config.dart contains API_BASE_URL and API_SECRET_KEY
+import '../config/api_config.dart';
 
 class RingRequest {
   final String busMac;
@@ -15,11 +15,9 @@ class RingRequest {
 
 class BusService {
   final Dio _dio;
-  final String _apiKey;
 
   BusService() :
-    _dio = Dio(BaseOptions(baseUrl: AppConfig.apiBaseUrl)),
-    _apiKey = AppConfig.apiSecretKey;
+    _dio = Dio(BaseOptions(baseUrl: ApiConfig.baseUrl));
 
   Future<void> ringBell(String busMac) async {
     try {
@@ -27,9 +25,7 @@ class BusService {
         '/api/ring',
         data: RingRequest(busMac: busMac).toJson(),
         options: Options(
-          headers: {
-            'X-API-Key': _apiKey,
-          },
+          headers: ApiConfig.headers,
         ),
       );
       if (response.statusCode != 200) {
