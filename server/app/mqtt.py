@@ -244,7 +244,9 @@ def on_message(client, userdata, msg):
                 app_payload = {
                     "bus_mac": bus_mac, "bus_name": bus_name, "lat": lat, "lon": lon,
                     "pm2_5": pm2_5, "pm10": pm10, "temp": temp, "hum": hum, 
-                    "seats_available": seats_available
+                    "seats_available": seats_available,
+                    "person_count": person_count,
+                    "rssi": rssi,
                 }
                 client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
 

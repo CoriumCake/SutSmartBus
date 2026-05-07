@@ -39,18 +39,33 @@ class Bus {
 
   bool get isOffline => (DateTime.now().millisecondsSinceEpoch - lastUpdated) > 60000;
 
-  factory Bus.fromJson(Map<String, dynamic> json) {
-    int timeVal = 0;
-    if (json['last_updated'] != null) {
-      try {
-        String dateStr = json['last_updated'].toString();
-        // Handle ISO8601 strings from server
-        final dt = DateTime.parse(dateStr);
-        timeVal = dt.millisecondsSinceEpoch;
-      } catch (e) {
-        timeVal = 0;
+  static int _parseLastUpdated(dynamic value) {
+    if (value == null) return 0;
+
+    try {
+      if (value is int) {
+        return value;
       }
+
+      final raw = value.toString().trim();
+      if (raw.isEmpty) return 0;
+
+      final numeric = int.tryParse(raw);
+      if (numeric != null) {
+        return numeric;
+      }
+
+      final hasTimezone = raw.endsWith('Z') || RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(raw);
+      final normalized = hasTimezone ? raw : '${raw}Z';
+
+      return DateTime.parse(normalized).millisecondsSinceEpoch;
+    } catch (e) {
+      return 0;
     }
+  }
+
+  factory Bus.fromJson(Map<String, dynamic> json) {
+    final timeVal = _parseLastUpdated(json['last_updated']);
 
     // Server uses mac_address as the primary key for devices
     final mac = json['mac_address'] ?? json['bus_mac'] ?? json['id']?.toString() ?? '';
