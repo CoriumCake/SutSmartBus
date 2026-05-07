@@ -3,6 +3,7 @@ from bson import ObjectId
 from . import models, schemas
 from datetime import datetime, timezone
 from .database import db
+from core.config import settings
 
 # Get collections
 bus_collection = db.get_collection("buses")
@@ -54,6 +55,14 @@ async def update_bus_location(mac_address: str, lat: float | None, lon: float | 
         update_data["current_lat"] = lat
     if lon is not None:
         update_data["current_lon"] = lon
+
+    # When a device comes online before GPS/PM hardware reports a real location,
+    # place it at a predictable fallback point so the app can still render it.
+    if lat is None and lon is None:
+        existing_bus = await get_bus_by_mac(mac_address)
+        if not existing_bus or existing_bus.get("current_lat") is None or existing_bus.get("current_lon") is None:
+            update_data["current_lat"] = settings.DEFAULT_BUS_LAT
+            update_data["current_lon"] = settings.DEFAULT_BUS_LON
         
     if bus_name:
         # Prevent overwriting a good name with a default "Bus-MAC" name

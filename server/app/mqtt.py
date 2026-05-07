@@ -189,6 +189,8 @@ def on_message(client, userdata, msg):
             person_count = payload.get("count")
         if person_count is not None:
             person_count = int(person_count)
+            if "seats_available" not in payload:
+                seats_available = max(0, constants.TOTAL_SEATS - person_count)
             
         rssi = payload.get("rssi")
         if rssi is not None:

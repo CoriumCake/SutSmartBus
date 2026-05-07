@@ -266,23 +266,28 @@ class DataNotifier extends StateNotifier<DataState> {
     final idx = buses.indexWhere((b) => b.busMac == busId || b.id == busId);
     
     int? count = data['count'] as int?;
+    final personCount = data['person_count'] as int? ?? count;
+    final seatsAvailable = personCount != null ? (33 - personCount).clamp(0, 33) : null;
     
     if (idx >= 0) {
       buses[idx] = buses[idx].copyWith(
+        busName: data['bus_name'] as String? ?? buses[idx].busName,
         rssi: data['rssi'] as int?,
         isOnline: true,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
-        personCount: count ?? buses[idx].personCount,
+        personCount: personCount ?? buses[idx].personCount,
+        seatsAvailable: seatsAvailable ?? buses[idx].seatsAvailable,
       );
     } else if (buses.length < 50) {
       buses.add(Bus(
         id: busId,
         busMac: busId,
-        busName: 'Bus-${busId.length >= 4 ? busId.substring(busId.length - 4) : busId}',
+        busName: data['bus_name'] as String? ?? 'Bus-${busId.length >= 4 ? busId.substring(busId.length - 4) : busId}',
         rssi: data['rssi'] as int?,
         isOnline: true,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
-        personCount: count,
+        personCount: personCount,
+        seatsAvailable: seatsAvailable,
       ));
     }
     state = state.copyWith(buses: buses);

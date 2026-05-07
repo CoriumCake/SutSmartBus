@@ -43,10 +43,12 @@ unsigned long lastMotionTime = 0;
 unsigned long clearStartTime = 0;
 uint8_t background[160 * 80];   // Background reference (160x80 ROI)
 char bus_mac[18];
+char reported_bus_mac[18];
 bool wifiConnected = false;
 bool bgInitialized = false;
 bool mqttConfigured = false;
 char mqttUri[128];
+bool ringPending = false;
 
 PsychicMqttClient mqttClient;
 Preferences preferences;
@@ -62,19 +64,36 @@ void beep(int duration) {
 // MQTT Functions
 void sendMQTT(String dir) {
   if (!mqttClient.connected()) return;
-  char buf[128];
-  snprintf(buf, 128, "{\"bus_mac\":\"%s\",\"dir\":\"%s\",\"count\":%d,\"t\":%ld}", 
-           bus_mac, dir.c_str(), passengerCount, millis()/1000);
+  char buf[192];
+  snprintf(
+    buf,
+    sizeof(buf),
+    "{\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"dir\":\"%s\",\"count\":%d,\"t\":%ld}",
+    reported_bus_mac,
+    BUS_NAME_ALIAS,
+    dir.c_str(),
+    passengerCount,
+    millis()/1000
+  );
   mqttClient.publish(MQTT_TOPIC_DETECTION, 1, false, buf);
 }
 
 void publishStatus() {
   if (!mqttClient.connected()) return;
-  char buf[128];
-  snprintf(buf, 128, "{\"bus_mac\":\"%s\",\"rssi\":%ld,\"uptime\":%lu,\"count\":%d}", 
-           bus_mac, WiFi.RSSI(), millis()/1000, passengerCount);
+  char buf[192];
+  snprintf(
+    buf,
+    sizeof(buf),
+    "{\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"rssi\":%ld,\"uptime\":%lu,\"count\":%d,\"person_count\":%d}",
+    reported_bus_mac,
+    BUS_NAME_ALIAS,
+    WiFi.RSSI(),
+    millis()/1000,
+    passengerCount,
+    passengerCount
+  );
   char topic[64];
-  snprintf(topic, 64, "sut/bus/%s/status", bus_mac);
+  snprintf(topic, 64, "sut/bus/%s/status", reported_bus_mac);
   mqttClient.publish(topic, 1, false, buf);
 }
 
@@ -106,6 +125,17 @@ void performOTA() {
 
 void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
   String message = String(payload);
+  if (String(topic) == MQTT_TOPIC_RING) {
+    bool isRingCommand = message.indexOf("\"command\":\"ring\"") >= 0;
+    bool hasBusMac = message.indexOf("\"bus_mac\":\"") >= 0;
+    bool matchesBusMac = message.indexOf(String("\"bus_mac\":\"") + reported_bus_mac + "\"") >= 0 ||
+                         message.indexOf(String("\"bus_mac\":\"") + bus_mac + "\"") >= 0;
+
+    if (isRingCommand && (!hasBusMac || matchesBusMac)) {
+      ringPending = true;
+    }
+    return;
+  }
   Serial.printf("📨 MQTT [%s]: %s\n", topic, message.c_str());
 
   if (String(topic).indexOf("ota") >= 0) {
@@ -127,17 +157,28 @@ void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
 }
 
 void setupMQTT() {
-  if (strlen(MQTT_SERVER) == 0 || strcmp(MQTT_SERVER, "your_mqtt_host") == 0) {
+  if ((strlen(MQTT_URI) == 0 || strcmp(MQTT_URI, "your_mqtt_uri") == 0) &&
+      (strlen(MQTT_SERVER) == 0 || strcmp(MQTT_SERVER, "your_mqtt_host") == 0)) {
     Serial.println("⚠️ MQTT Blocked (Placeholder detected in config.h)");
     return;
   }
   snprintf(mqttUri, sizeof(mqttUri), "mqtt://%s:%d", MQTT_SERVER, MQTT_PORT);
   Serial.printf("🔌 MQTT Configured: %s\n", mqttUri);
 
+  if (strlen(MQTT_URI) > 0 && strcmp(MQTT_URI, "your_mqtt_uri") != 0) {
+    snprintf(mqttUri, sizeof(mqttUri), "%s", MQTT_URI);
+  }
+
+  if ((strncmp(mqttUri, "wss://", 6) == 0 || strncmp(mqttUri, "mqtts://", 8) == 0) && strlen(MQTT_ROOT_CA) > 0) {
+    mqttClient.setCACert(MQTT_ROOT_CA);
+  }
+
   mqttClient.onMessage(mqttCallback);
   mqttClient.onConnect([](bool sessionPresent) {
     Serial.println("✅ MQTT Connected");
+    mqttClient.subscribe(MQTT_TOPIC_RING, 1);
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
+    publishStatus();
   });
   mqttClient.setServer(mqttUri);
   mqttClient.setClientId(MQTT_CLIENT_ID);
@@ -275,6 +316,11 @@ void setup() {
   uint8_t mac[6];
   WiFi.macAddress(mac);
   snprintf(bus_mac, 18, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  if (strlen(BUS_MAC_ALIAS) > 0) {
+    snprintf(reported_bus_mac, sizeof(reported_bus_mac), "%s", BUS_MAC_ALIAS);
+  } else {
+    snprintf(reported_bus_mac, sizeof(reported_bus_mac), "%s", bus_mac);
+  }
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -323,6 +369,10 @@ void loop() {
       Serial.println("🌐 Live view: http://" + WiFi.localIP().toString());
     }
     if (!mqttClient.connected()) reconnectMQTT();
+    if (ringPending) {
+      ringPending = false;
+      beep(500);
+    }
     if (otaPending) performOTA();
   }
   httpServer.handleClient();

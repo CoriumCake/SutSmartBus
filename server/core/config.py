@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     # Database Settings
     DB_FILE: str = "bus_passengers.db"
 
+    # Default fallback bus location used when a device comes online without GPS data yet.
+    DEFAULT_BUS_LAT: float = 14.878001729445229
+    DEFAULT_BUS_LON: float = 102.02142930035654
+
     class Config:
         env_file = ".env"
         extra = "ignore"  # Allow extra fields in .env
