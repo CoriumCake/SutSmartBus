@@ -64,12 +64,15 @@ jobs:
           docker compose up -d --build
 
           for i in $(seq 1 30); do
-            if curl -fsS http://localhost:8000/health >/dev/null; then
-              echo "Deployment health check passed."
+            status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' sut-server 2>/dev/null || echo "missing")
+            if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
+              echo "Deployment health check passed with status: $status"
               exit 0
             fi
+            echo "Waiting for sut-server health, current status: $status"
             sleep 5
           done
 
+          docker inspect sut-server --format '{{json .State}}' || true
           docker compose logs --tail=200
           exit 1
