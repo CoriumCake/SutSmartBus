@@ -46,6 +46,8 @@
 // ============================================
 
 // Bus Identification
+// BUS_NAME must exactly match the ESP32-CAM bus name for the same bus
+// so the backend can merge GPS/PM data into the passenger-counter bus record.
 #define BUS_NAME           "SUT-BUS-01"
 #define WEB_NAME           "sutbus"
 

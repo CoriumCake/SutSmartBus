@@ -175,6 +175,7 @@ void publishData() {
   if (!mqttClient.connected()) return;
   StaticJsonDocument<256> doc;
   doc["bus_mac"] = bus_mac;
+  doc["bus_name"] = BUS_NAME;
   doc["temp"] = tempC;
   doc["hum"] = humid;
   doc["pm2_5"] = pm25;
@@ -190,6 +191,7 @@ void publishGPS() {
   if (!mqttClient.connected() || !gps.location.isValid()) return;
   StaticJsonDocument<128> doc;
   doc["bus_mac"] = bus_mac;
+  doc["bus_name"] = BUS_NAME;
   doc["lat"] = gps.location.lat();
   doc["lon"] = gps.location.lng();
   doc["speed"] = gps.speed.kmph();

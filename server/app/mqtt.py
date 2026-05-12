@@ -33,6 +33,16 @@ def bus_document_to_app_payload(bus_doc: dict) -> dict:
         "rssi": bus_doc.get("rssi"),
     }
 
+
+async def resolve_bus_identity(bus_mac: str, bus_name: str | None):
+    bus = await crud.get_bus_by_mac(bus_mac)
+    if bus is None and bus_name:
+        bus = await crud.get_bus_by_name(bus_name)
+
+    resolved_mac = bus.get("mac_address") if bus else bus_mac
+    resolved_name = bus.get("bus_name") if bus else bus_name
+    return bus, resolved_mac, resolved_name
+
 # Helper for Point in Polygon (Ray Casting)
 def is_point_in_polygon(lat: float, lon: float, polygon: list):
     num_vertices = len(polygon)
@@ -153,9 +163,7 @@ def on_message(client, userdata, msg):
                 resolved_bus = None
                 if state.state.main_loop:
                     async def resolve_bus():
-                        bus = await crud.get_bus_by_mac(bus_mac)
-                        if bus is None and bus_name:
-                            bus = await crud.get_bus_by_name(bus_name)
+                        bus, _, _ = await resolve_bus_identity(bus_mac, bus_name)
                         return bus
 
                     resolved_bus = asyncio.run_coroutine_threadsafe(
@@ -257,10 +265,17 @@ def on_message(client, userdata, msg):
 
         if state.state.main_loop:
             async def process_update_async():
-                previous_bus = await crud.get_bus_by_mac(bus_mac)
+                resolved_bus, resolved_mac, resolved_name = await resolve_bus_identity(
+                    bus_mac,
+                    bus_name,
+                )
+                previous_bus = resolved_bus
                 # Update DB
                 updated_bus = await crud.update_bus_location(
-                    mac_address=bus_mac, bus_name=bus_name, lat=lat, lon=lon,
+                    mac_address=resolved_mac,
+                    bus_name=resolved_name,
+                    lat=lat,
+                    lon=lon,
                     seats_available=seats_available, pm2_5=pm2_5, pm10=pm10, temp=temp, hum=hum,
                     person_count=person_count, rssi=rssi
                 )
@@ -288,7 +303,7 @@ def on_message(client, userdata, msg):
                 ):
                     from .analytics import record_passenger_count
                     record_passenger_count(
-                        bus_mac,
+                        resolved_mac,
                         0,
                         updated_bus.get("current_lat") or 0.0,
                         updated_bus.get("current_lon") or 0.0,
@@ -297,21 +312,35 @@ def on_message(client, userdata, msg):
                 if lat is not None and lon is not None:
                     hw_loc = models.HardwareLocation(
                         lat=lat, lon=lon, pm2_5=pm2_5, pm10=pm10, 
-                        timestamp=datetime.now(timezone.utc), bus_mac=bus_mac
+                        timestamp=datetime.now(timezone.utc), bus_mac=resolved_mac
                     )
                     await crud.create_hardware_location(hw_loc)
                 
                 # Check zones
                 if lat is not None and lon is not None:
-                    await check_pm_zones_logic(bus_mac, lat, lon, pm2_5, pm10, temp, hum)
+                    await check_pm_zones_logic(resolved_mac, lat, lon, pm2_5, pm10, temp, hum)
+
+                return resolved_mac, resolved_name, updated_bus
 
             fut = asyncio.run_coroutine_threadsafe(process_update_async(), state.state.main_loop)
             fut.add_done_callback(log_future_done)
             
             # Broadcast to App if not fast GPS
             if msg.topic != constants.TOPIC_ESP32_GPS_FAST:
+                resolved_mac = bus_mac
+                resolved_name = bus_name
+                try:
+                    resolved_bus, matched_mac, matched_name = asyncio.run_coroutine_threadsafe(
+                        resolve_bus_identity(bus_mac, bus_name),
+                        state.state.main_loop,
+                    ).result(timeout=1)
+                    resolved_mac = matched_mac
+                    resolved_name = matched_name
+                except Exception:
+                    pass
+
                 app_payload = {
-                    "bus_mac": bus_mac, "bus_name": bus_name, "lat": lat, "lon": lon,
+                    "bus_mac": resolved_mac, "bus_name": resolved_name, "lat": lat, "lon": lon,
                     "pm2_5": pm2_5, "pm10": pm10, "temp": temp, "hum": hum, 
                     "seats_available": seats_available,
                     "person_count": person_count,
