@@ -117,9 +117,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   static const double _nextStopHoldDistanceM = 90;
   static const double _nextStopReleaseDistanceM = 35;
   static const double _stopArrivalDistanceM = 20;
-  static const double _selectedBusOverlayWidth = 240;
-  static const double _selectedBusOverlayHeight = 112;
-  static const double _selectedBusOverlayGap = 4;
+  static const double _selectedBusDockMaxWidth = 420;
 
   @override
   void initState() {
@@ -472,7 +470,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final busScreen = _mapController.camera.latLngToScreenPoint(busPoint);
     final desiredBusX = screenCenter.dx;
     final desiredBusY = _selectedInfoBusMac != null
-        ? screenSize.height * 0.62
+        ? screenSize.height * 0.38
         : _ridingBusMac != null
             ? screenSize.height * 0.56
             : screenCenter.dy;
@@ -1609,13 +1607,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final nextStopName =
         nextStops.isNotEmpty ? nextStops.first.stopName ?? '-' : '-';
 
-    return SizedBox(
-      width: _selectedBusOverlayWidth,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(
+        maxWidth: _selectedBusDockMaxWidth,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: _selectedBusOverlayWidth,
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -1694,27 +1693,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ],
             ),
           ),
-          Transform.translate(
-            offset: const Offset(0, -1),
-            child: Transform.rotate(
-              angle: math.pi / 4,
-              child: Container(
-                width: 14,
-                height: 14,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -1785,38 +1763,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           )
         : null;
 
-    if (bus.currentLat == null || bus.currentLon == null) {
-      return const SizedBox.shrink();
-    }
-
-    final point = _mapController.camera.latLngToScreenPoint(
-      LatLng(bus.currentLat!, bus.currentLon!),
-    );
-    final screenSize = MediaQuery.of(context).size;
-    final topPadding = MediaQuery.of(context).padding.top;
-
-    var left = point.x - (_selectedBusOverlayWidth / 2);
-    left = left.clamp(
-      12.0,
-      screenSize.width - _selectedBusOverlayWidth - 12.0,
-    );
-
-    var top = point.y - _selectedBusOverlayHeight - _selectedBusOverlayGap;
-    final minimumTop = topPadding + 12.0;
-
-    top = top.clamp(
-      minimumTop,
-      screenSize.height - _selectedBusOverlayHeight - 120.0,
-    );
-
     return Positioned(
-      left: left,
-      top: top,
-      child: _buildBusInfoSheet(
-        bus: bus,
-        route: route,
-        nextStops: nextStops,
-        etaToUser: etaToUser,
+      left: 16,
+      right: 16,
+      bottom: MediaQuery.of(context).padding.bottom + 16,
+      child: SafeArea(
+        top: false,
+        minimum: EdgeInsets.zero,
+        child: Center(
+          child: _buildBusInfoSheet(
+            bus: bus,
+            route: route,
+            nextStops: nextStops,
+            etaToUser: etaToUser,
+          ),
+        ),
       ),
     );
   }

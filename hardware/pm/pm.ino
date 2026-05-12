@@ -1,5 +1,5 @@
 #include <WiFi.h>
-#include <PubSubClient.h>
+#include <PsychicMqttClient.h>
 #include <HTTPUpdate.h>
 #include <TinyGPS++.h>
 #include <ArduinoJson.h>
@@ -18,8 +18,7 @@ String otaUrl = "";
 String otaVersion = "";
 
 // Hardware Objects
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
+PsychicMqttClient mqttClient;
 WebServer server(80);
 RTC_DS3231 rtc;
 DHT dht(DHTPIN, DHTTYPE);
@@ -34,16 +33,20 @@ float tempC = 0, humid = 0;
 uint16_t pm25 = 0, pm10 = 0;
 unsigned long last5s = 0, last30s = 0, lastGpsPublish = 0;
 const char* logFilename = "/gps_log.csv";
+bool mqttConfigured = false;
+bool mqttConnectAttempted = false;
+char mqttUri[128];
 
 // --- Function Prototypes ---
 void handleWiFi();
 void reconnectMQTT();
+void setupMQTT();
 void processGPS();
 void processPMS();
 void publishData();
 void publishGPS();
 void saveToSD();
-void mqttCallback(char* topic, byte* payload, unsigned int length);
+void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup);
 void performOTA();
 
 void setup() {
@@ -66,9 +69,7 @@ void setup() {
   // WiFi & MQTT Setup
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
-  mqttClient.setCallback(mqttCallback);
-  mqttClient.setBufferSize(512);
+  setupMQTT();
 
   // SD Card setup
   if (!SD.begin(SD_CS_PIN)) {
@@ -101,7 +102,6 @@ void loop() {
   
   if (WiFi.status() == WL_CONNECTED) {
     if (!mqttClient.connected()) reconnectMQTT();
-    mqttClient.loop();
     if (otaPending) performOTA();
   }
 
@@ -141,16 +141,71 @@ void handleWiFi() {
 }
 
 void reconnectMQTT() {
-  if (strcmp(MQTT_SERVER, "183.89.203.247") == 0 || strlen(MQTT_SERVER) < 7) return; 
+  if (!mqttConfigured) return;
+  if (mqttConnectAttempted) return;
   static unsigned long lastAttempt = 0;
-  if (millis() - lastAttempt < 5000) return;
+  if (millis() - lastAttempt < 10000) return;
   lastAttempt = millis();
+  mqttConnectAttempted = true;
 
-  Serial.printf("🔌 MQTT Connecting: %s\n", MQTT_SERVER);
-  if (mqttClient.connect(bus_mac)) {
-    Serial.println("✅ MQTT Connected");
-    mqttClient.subscribe(MQTT_TOPIC_OTA);
+  Serial.printf("🔌 MQTT Connecting: %s\n", mqttUri);
+  mqttClient.connect();
+}
+
+void setupMQTT() {
+  if ((strlen(MQTT_URI) == 0 || strcmp(MQTT_URI, "your_mqtt_uri") == 0) &&
+      (strlen(MQTT_SERVER) == 0 || strcmp(MQTT_SERVER, "your_mqtt_host") == 0)) {
+    Serial.println("⚠️ MQTT Blocked (Placeholder detected in config.h)");
+    return;
   }
+
+  snprintf(mqttUri, sizeof(mqttUri), "mqtt://%s:%d", MQTT_SERVER, MQTT_PORT);
+  if (strlen(MQTT_URI) > 0 && strcmp(MQTT_URI, "your_mqtt_uri") != 0) {
+    snprintf(mqttUri, sizeof(mqttUri), "%s", MQTT_URI);
+  }
+
+  bool isWebsocket = strncmp(mqttUri, "ws://", 5) == 0 || strncmp(mqttUri, "wss://", 6) == 0;
+  if (isWebsocket) {
+    const char* pathStart = strchr(mqttUri + (strncmp(mqttUri, "wss://", 6) == 0 ? 6 : 5), '/');
+    if (pathStart == nullptr) {
+      size_t baseLen = strlen(mqttUri);
+      if (baseLen + 6 < sizeof(mqttUri)) {
+        strncat(mqttUri, "/mqtt", sizeof(mqttUri) - baseLen - 1);
+      }
+    }
+  }
+
+  if ((strncmp(mqttUri, "wss://", 6) == 0 || strncmp(mqttUri, "mqtts://", 8) == 0) &&
+      strlen(MQTT_ROOT_CA) > 0) {
+    mqttClient.setCACert(MQTT_ROOT_CA);
+  }
+
+  mqttClient.onMessage(mqttCallback);
+  mqttClient.onConnect([](bool sessionPresent) {
+    mqttConnectAttempted = false;
+    Serial.println("✅ MQTT Connected");
+    mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
+  });
+  mqttClient.onDisconnect([](bool sessionPresent) {
+    mqttConnectAttempted = false;
+    Serial.println("MQTT disconnected");
+  });
+  mqttClient.onError([](esp_mqtt_error_codes_t error) {
+    mqttConnectAttempted = false;
+    Serial.printf("MQTT error type=%d tls=%d stack=%d sock=%d\n",
+      error.error_type,
+      error.esp_tls_last_esp_err,
+      error.esp_tls_stack_err,
+      error.esp_transport_sock_errno
+    );
+  });
+  mqttClient.setServer(mqttUri);
+  mqttClient.setClientId(bus_mac);
+  // Keep reconnection in one place. The sketch already retries manually, and
+  // enabling the library auto-reconnect can re-start an already running client.
+  mqttClient.setAutoReconnect(false);
+  mqttClient.setKeepAlive(30);
+  mqttConfigured = true;
 }
 
 void processGPS() {
@@ -184,7 +239,7 @@ void publishData() {
   
   char buffer[256];
   serializeJson(doc, buffer);
-  mqttClient.publish(MQTT_TOPIC, buffer);
+  mqttClient.publish(MQTT_TOPIC, 1, false, buffer);
 }
 
 void publishGPS() {
@@ -198,7 +253,7 @@ void publishGPS() {
   
   char buffer[128];
   serializeJson(doc, buffer);
-  mqttClient.publish(MQTT_TOPIC_FAST, buffer);
+  mqttClient.publish(MQTT_TOPIC_FAST, 1, false, buffer);
 }
 
 void saveToSD() {
@@ -212,10 +267,8 @@ void saveToSD() {
   }
 }
 
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  char message[length + 1];
-  memcpy(message, payload, length);
-  message[length] = '\0';
+void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
+  String message = String(payload);
   
   StaticJsonDocument<256> otaDoc;
   if (deserializeJson(otaDoc, message) == DeserializationError::Ok) {
@@ -229,6 +282,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 void performOTA() {
   otaPending = false;
   Serial.println("🔄 Starting OTA...");
-  t_httpUpdate_return ret = httpUpdate.update(espClient, otaUrl);
+  WiFiClient client;
+  t_httpUpdate_return ret = httpUpdate.update(client, otaUrl);
   if (ret == HTTP_UPDATE_OK) ESP.restart();
 }

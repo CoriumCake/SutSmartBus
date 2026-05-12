@@ -267,7 +267,9 @@ void setupMQTT() {
   });
   mqttClient.setServer(mqttUri);
   mqttClient.setClientId(MQTT_CLIENT_ID);
-  mqttClient.setAutoReconnect(true);
+  // We already retry from loop(); enabling the library auto-reconnect as well
+  // can double-start the underlying ESP-IDF client after a disconnect.
+  mqttClient.setAutoReconnect(false);
   mqttClient.setKeepAlive(30);
   Serial.printf("MQTT Final URI: %s\n", mqttUri);
   mqttConfigured = true;
