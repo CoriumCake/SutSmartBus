@@ -447,7 +447,6 @@ void setup() {
   httpServer.begin();
   Serial.println("🌐 HTTP server started on port 80");
 
-  beep(100); delay(100); beep(100); // Ready beeps
   Serial.println("🚌 Optimized Bus Cam Ready (Stripped-Down Serial)");
   Serial.printf("Direction Mode: R->L is %s\n", IS_RIGHT_TO_LEFT_ENTER ? "ENTER" : "EXIT");
 }
@@ -574,7 +573,6 @@ void loop() {
         publishStatus();
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR
-        beep(80);
       } else if (millis() - lastMotionTime > 2000) {
         currentState = 0;
         Serial.println("⏱️ State Reset Left (Timeout)");
@@ -596,7 +594,6 @@ void loop() {
         publishStatus();
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR
-        beep(80);
       } else if (millis() - lastMotionTime > 2000) {
         currentState = 0;
         Serial.println("⏱️ State Reset Right (Timeout)");
