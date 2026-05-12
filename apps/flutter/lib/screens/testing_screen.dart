@@ -13,21 +13,22 @@ class TestingScreen extends ConsumerStatefulWidget {
 
 class _TestingScreenState extends ConsumerState<TestingScreen> {
   String _lastDetection = 'Waiting for data...';
-  
+
   @override
   void initState() {
     super.initState();
     _listenToDetection();
   }
-  
+
   void _listenToDetection() {
     final mqtt = ref.read(mqttServiceProvider);
     mqtt.onMessage = (topic, message) {
       if (topic == 'sut/person-detection') {
         if (mounted) {
-           setState(() {
-             _lastDetection = 'Total Users: ${message['total_unique_persons'] ?? 0}\nEntering: ${message['entering'] ?? 0}\nExiting: ${message['exiting'] ?? 0}\nProcessing Time: ${message['processing_time_ms'] ?? 0}ms';
-           });
+          setState(() {
+            _lastDetection =
+                'Total Users: ${message['total_unique_persons'] ?? 0}\nEntering: ${message['entering'] ?? 0}\nExiting: ${message['exiting'] ?? 0}\nProcessing Time: ${message['processing_time_ms'] ?? 0}ms';
+          });
         }
       }
       // Re-route normal messages to data provider
@@ -39,6 +40,7 @@ class _TestingScreenState extends ConsumerState<TestingScreen> {
   Widget build(BuildContext context) {
     final sim = ref.watch(simulationProvider);
     final data = ref.watch(dataProvider);
+    final simNotifier = ref.read(simulationProvider.notifier);
 
     return Scaffold(
       appBar: AppBar(
@@ -52,15 +54,64 @@ class _TestingScreenState extends ConsumerState<TestingScreen> {
             'Fake Bus Simulation',
             [
               ListTile(
-                title: const Text('Simulate Bus Movement'),
-                subtitle: Text(sim.isSimulating ? 'Sending fake GPS/PM data...' : 'Inactive'),
+                title: const Text('Simulate Route Driving'),
+                subtitle: Text(
+                  sim.isSimulating
+                      ? sim.status
+                      : (sim.hasDebugBus ? sim.status : 'Inactive'),
+                ),
                 trailing: Switch(
                   value: sim.isSimulating,
-                  onChanged: (value) {
-                    ref.read(simulationProvider.notifier).toggleSimulation(value);
+                  onChanged: (value) async {
+                    await simNotifier.toggleSimulation(value);
                   },
                 ),
               ),
+              SwitchListTile(
+                title: const Text('Loop All Routes'),
+                subtitle:
+                    const Text('After the last route, start again from route 1.'),
+                value: sim.loopRoutes,
+                onChanged: (value) => simNotifier.setLoopRoutes(value),
+              ),
+              ListTile(
+                title: const Text('Simulation Speed'),
+                subtitle: Text('${sim.speedMps.toStringAsFixed(1)} m/s'),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Slider(
+                  value: sim.speedMps,
+                  min: 2,
+                  max: 20,
+                  divisions: 18,
+                  label: '${sim.speedMps.toStringAsFixed(1)} m/s',
+                  onChanged: simNotifier.setSpeedMps,
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.route_outlined),
+                title: Text(sim.currentRouteName ?? 'Waiting for route data'),
+                subtitle: Text(
+                  sim.totalRoutes == 0
+                      ? 'No route selected yet'
+                      : 'Route ${sim.currentRouteIndex + 1}/${sim.totalRoutes} • Waypoint ${sim.currentWaypointIndex + 1}/${sim.totalWaypoints}',
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.loop),
+                title: const Text('Completed Loops'),
+                trailing: Text('${sim.completedLoops}'),
+              ),
+              if (sim.hasDebugBus && !sim.isSimulating)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: OutlinedButton.icon(
+                    onPressed: () async => simNotifier.clearDebugBus(),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Clear Debug Bus'),
+                  ),
+                ),
             ],
           ),
           _buildDebugSection(
@@ -69,7 +120,11 @@ class _TestingScreenState extends ConsumerState<TestingScreen> {
             [
               ListTile(
                 title: const Text('Data Layer Status'),
-                subtitle: Text(data.loading ? 'Loading...' : (data.error != null ? 'Error: ${data.error}' : 'Connected')),
+                subtitle: Text(data.loading
+                    ? 'Loading...'
+                    : (data.error != null
+                        ? 'Error: ${data.error}'
+                        : 'Connected')),
                 leading: Icon(
                   data.error != null ? Icons.error_outline : Icons.cloud_done,
                   color: data.error != null ? Colors.red : Colors.green,
@@ -88,7 +143,8 @@ class _TestingScreenState extends ConsumerState<TestingScreen> {
             [
               ListTile(
                 title: const Text('Topic Monitoring'),
-                subtitle: const Text('Subscribed to: sut/app/bus/location, etc.'),
+                subtitle:
+                    const Text('Subscribed to: sut/app/bus/location, etc.'),
                 leading: const Icon(Icons.message),
               ),
               ListTile(
@@ -104,14 +160,14 @@ class _TestingScreenState extends ConsumerState<TestingScreen> {
             [
               ListTile(
                 title: const Text('Force Route Sync'),
-                subtitle: const Text('Manually trigger route data synchronization.'),
+                subtitle:
+                    const Text('Manually trigger route data synchronization.'),
                 trailing: IconButton(
                   icon: const Icon(Icons.sync),
                   onPressed: () {
                     ref.read(dataProvider.notifier).refreshBuses();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Syncing buses...'))
-                    );
+                        const SnackBar(content: Text('Syncing buses...')));
                   },
                 ),
               ),
@@ -123,7 +179,8 @@ class _TestingScreenState extends ConsumerState<TestingScreen> {
     );
   }
 
-  Widget _buildDebugSection(BuildContext context, String title, List<Widget> children) {
+  Widget _buildDebugSection(
+      BuildContext context, String title, List<Widget> children) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 10),
       child: Padding(

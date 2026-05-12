@@ -13,7 +13,7 @@ TOPIC_OTA_PM = "sut/ota/pm"
 TOPIC_PERSON_DETECTION = "sut/person-detection"
 
 # Bus Config
-TOTAL_SEATS = 33
+TOTAL_SEATS = 40
 BUS_MAC_MOCK = "DEBUG-MAC-01"
 
 # Bus-Route Mapping

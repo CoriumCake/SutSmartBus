@@ -7,7 +7,8 @@ class BusManagementScreen extends ConsumerStatefulWidget {
   const BusManagementScreen({super.key});
 
   @override
-  ConsumerState<BusManagementScreen> createState() => _BusManagementScreenState();
+  ConsumerState<BusManagementScreen> createState() =>
+      _BusManagementScreenState();
 }
 
 class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
@@ -38,7 +39,8 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
   }
 
   void _showAddEditDialog({Bus? existing}) {
-    final macController = TextEditingController(text: existing?.busMac ?? existing?.macAddress ?? '');
+    final macController = TextEditingController(
+        text: existing?.busMac ?? existing?.macAddress ?? '');
     final nameController = TextEditingController(text: existing?.busName ?? '');
 
     showDialog(
@@ -56,7 +58,8 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
                 labelText: 'MAC Address',
                 hintText: 'e.g., AA:BB:CC:11:22:33',
                 prefixIcon: const Icon(Icons.fingerprint),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
               enabled: existing == null,
             ),
@@ -67,7 +70,8 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
                 labelText: 'Bus Name',
                 hintText: 'e.g., Orange Bus 01',
                 prefixIcon: const Icon(Icons.badge),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
               textCapitalization: TextCapitalization.words,
             ),
@@ -80,15 +84,18 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
           ),
           FilledButton(
             onPressed: () async {
-              if (macController.text.isEmpty || nameController.text.isEmpty) return;
-              
+              if (macController.text.isEmpty || nameController.text.isEmpty)
+                return;
+
               final api = ref.read(apiServiceProvider);
               bool success = false;
-              
+
               if (existing != null) {
-                success = await api.updateBus(macController.text, nameController.text);
+                success = await api.updateBus(
+                    macController.text, nameController.text);
               } else {
-                success = await api.createBus(macController.text, nameController.text);
+                success = await api.createBus(
+                    macController.text, nameController.text);
               }
 
               if (success && ctx.mounted) {
@@ -109,9 +116,11 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Bus'),
-        content: Text('Are you sure you want to remove ${bus.busName}?\nThis action cannot be undone.'),
+        content: Text(
+            'Are you sure you want to remove ${bus.busName}?\nThis action cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
@@ -133,10 +142,11 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final filteredBuses = _registeredBuses.where((b) => 
-      b.busName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-      b.busMac.toLowerCase().contains(_searchQuery.toLowerCase())
-    ).toList();
+    final filteredBuses = _registeredBuses
+        .where((b) =>
+            b.busName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+            b.busMac.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -163,7 +173,8 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
                 hintText: 'Search by name or MAC...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.3),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(32),
                   borderSide: BorderSide.none,
@@ -200,13 +211,16 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
           backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
           child: Icon(Icons.directions_bus, color: theme.colorScheme.primary),
         ),
-        title: Text(bus.busName, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(bus.busName,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('MAC: ${bus.busMac}', style: theme.textTheme.bodySmall),
             if (bus.routeId != null)
-              Text('Route ID: ${bus.routeId}', style: TextStyle(color: theme.colorScheme.secondary, fontSize: 12)),
+              Text('Route ID: ${bus.routeId}',
+                  style: TextStyle(
+                      color: theme.colorScheme.secondary, fontSize: 12)),
           ],
         ),
         trailing: Row(
@@ -237,7 +251,8 @@ class _BusManagementScreenState extends ConsumerState<BusManagementScreen> {
           const SizedBox(height: 16),
           Text(
             _searchQuery.isEmpty ? 'No buses registered' : 'No matches found',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
+            style: const TextStyle(
+                fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
           ),
           if (_searchQuery.isNotEmpty)
             TextButton(

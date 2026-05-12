@@ -1,4 +1,5 @@
 class Bus {
+  static const int maxPassengerCount = 40;
   final String id;
   final String busMac;
   final String? macAddress;
@@ -37,7 +38,20 @@ class Bus {
     this.personCount,
   });
 
-  bool get isOffline => (DateTime.now().millisecondsSinceEpoch - lastUpdated) > 60000;
+  bool get isOffline =>
+      (DateTime.now().millisecondsSinceEpoch - lastUpdated) > 60000;
+
+  bool get isDebugBus {
+    final normalizedName = busName.toUpperCase();
+    final normalizedMac = busMac.toUpperCase();
+    final normalizedAddress = macAddress?.toUpperCase();
+
+    return isFake ||
+        normalizedMac.startsWith('DEBUG-') ||
+        normalizedName.contains('DEBUG') ||
+        normalizedName.contains('(TEST)') ||
+        (normalizedAddress?.startsWith('DEBUG-') ?? false);
+  }
 
   static int _parseLastUpdated(dynamic value) {
     if (value == null) return 0;
@@ -55,7 +69,8 @@ class Bus {
         return numeric;
       }
 
-      final hasTimezone = raw.endsWith('Z') || RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(raw);
+      final hasTimezone =
+          raw.endsWith('Z') || RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(raw);
       final normalized = hasTimezone ? raw : '${raw}Z';
 
       return DateTime.parse(normalized).millisecondsSinceEpoch;
@@ -64,17 +79,26 @@ class Bus {
     }
   }
 
+  static int? _normalizePassengerCount(dynamic value) {
+    if (value == null) return null;
+    final count = value is num ? value.toInt() : int.tryParse(value.toString());
+    if (count == null) return null;
+    return count.clamp(0, maxPassengerCount);
+  }
+
   factory Bus.fromJson(Map<String, dynamic> json) {
     final timeVal = _parseLastUpdated(json['last_updated']);
 
     // Server uses mac_address as the primary key for devices
-    final mac = json['mac_address'] ?? json['bus_mac'] ?? json['id']?.toString() ?? '';
+    final mac =
+        json['mac_address'] ?? json['bus_mac'] ?? json['id']?.toString() ?? '';
 
     return Bus(
       id: mac,
       busMac: mac,
       macAddress: json['mac_address'],
-      busName: json['bus_name'] ?? 'Bus-${mac.length >= 4 ? mac.substring(mac.length - 4) : mac}',
+      busName: json['bus_name'] ??
+          'Bus-${mac.length >= 4 ? mac.substring(mac.length - 4) : mac}',
       currentLat: (json['current_lat'] as num?)?.toDouble(),
       currentLon: (json['current_lon'] as num?)?.toDouble(),
       seatsAvailable: json['seats_available'] as int?,
@@ -85,7 +109,7 @@ class Bus {
       rssi: json['rssi'] as int?,
       lastUpdated: timeVal,
       routeId: json['route_id']?.toString(),
-      personCount: json['person_count'] as int?,
+      personCount: _normalizePassengerCount(json['person_count']),
     );
   }
 
@@ -121,7 +145,9 @@ class Bus {
       lastUpdated: lastUpdated ?? this.lastUpdated,
       routeId: routeId ?? this.routeId,
       isFake: isFake,
-      personCount: personCount ?? this.personCount,
+      personCount: personCount != null
+          ? personCount.clamp(0, maxPassengerCount).toInt()
+          : this.personCount,
     );
   }
 }

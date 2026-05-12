@@ -15,7 +15,9 @@ class AirQualityStatus {
 AirQualityStatus getAirQualityStatus(double? value) {
   if (value == null) {
     return const AirQualityStatus(
-      label: 'No Data', color: Colors.grey, solidColor: Colors.grey,
+      label: 'No Data',
+      color: Colors.grey,
+      solidColor: Colors.grey,
     );
   }
   if (value <= 25) {
@@ -47,9 +49,9 @@ AirQualityStatus getAirQualityStatus(double? value) {
 }
 
 Color getPMColor(double pm25) {
-  if (pm25 <= 12) return const Color(0xFF4CAF50);   // Green
-  if (pm25 <= 35) return const Color(0xFFFFEB3B);   // Yellow
-  if (pm25 <= 55) return const Color(0xFFFF9800);   // Orange
-  if (pm25 <= 150) return const Color(0xFFF44336);  // Red
-  return const Color(0xFF9C27B0);                     // Purple
+  if (pm25 <= 12) return const Color(0xFF4CAF50); // Green
+  if (pm25 <= 35) return const Color(0xFFFFEB3B); // Yellow
+  if (pm25 <= 55) return const Color(0xFFFF9800); // Orange
+  if (pm25 <= 150) return const Color(0xFFF44336); // Red
+  return const Color(0xFF9C27B0); // Purple
 }

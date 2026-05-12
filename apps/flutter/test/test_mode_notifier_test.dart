@@ -3,25 +3,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:sut_smart_bus/providers/test_mode_provider.dart';
-import 'package:sut_smart_bus/providers/simulation_provider.dart';
 import 'package:sut_smart_bus/services/mqtt_service.dart';
 
 import 'test_mode_notifier_test.mocks.dart';
 
-@GenerateMocks([MqttService, SimulationNotifier])
+@GenerateMocks([MqttService])
 void main() {
   late MockMqttService mockMqtt;
-  late MockSimulationNotifier mockSim;
   late ProviderContainer container;
 
   setUp(() {
     mockMqtt = MockMqttService();
-    mockSim = MockSimulationNotifier();
-
-    // Default stubs
-    when(mockSim.toggleSimulation(any, lat: anyNamed('lat'), lon: anyNamed('lon')))
-        .thenReturn(null);
-    when(mockSim.setPersonCount(any)).thenReturn(null);
 
     container = ProviderContainer(
       overrides: [
@@ -38,8 +30,7 @@ void main() {
 
   // ─── Helper to build the notifier with injected mocks ───────────────────────
 
-  TestModeNotifier buildNotifier() =>
-      TestModeNotifier(mockMqtt, mockSim);
+  TestModeNotifier buildNotifier() => TestModeNotifier(mockMqtt);
 
   // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -52,22 +43,20 @@ void main() {
       expect(notifier.state.simulatedUserPosition, isNull);
     });
 
-    test('toggle() enables test mode, subscribes to MQTT, starts fake bus', () {
+    test('toggle() enables test mode and subscribes to MQTT', () {
       final notifier = buildNotifier();
 
       notifier.toggle();
 
       expect(notifier.state.enabled, isTrue);
       expect(notifier.state.selectedCamUrl, equals(kCamUrls.first));
-      expect(notifier.state.simulatedUserPosition, equals(kPresetPositions.first));
+      expect(
+          notifier.state.simulatedUserPosition, equals(kPresetPositions.first));
 
       verify(mockMqtt.subscribeToCamCount(any)).called(1);
-      verify(mockSim.setPersonCount(0)).called(1);
-      verify(mockSim.toggleSimulation(true, lat: anyNamed('lat'), lon: anyNamed('lon')))
-          .called(1);
     });
 
-    test('toggle() again disables test mode, unsubscribes, stops fake bus', () {
+    test('toggle() again disables test mode and unsubscribes', () {
       final notifier = buildNotifier();
       notifier.toggle(); // enable
       notifier.toggle(); // disable
@@ -77,7 +66,6 @@ void main() {
       expect(notifier.state.selectedCamUrl, isNull);
 
       verify(mockMqtt.unsubscribeFromCamCount()).called(1);
-      verify(mockSim.toggleSimulation(false)).called(1);
     });
 
     test('selectCam() updates selectedCamUrl in state', () {
@@ -133,9 +121,6 @@ void main() {
     test('updatePersonCount updates the simulated count directly', () {
       final notifier = buildNotifier();
       notifier.toggle(); // enable
-      
-      reset(mockSim); // Clear initial call to setPersonCount(0)
-      when(mockSim.setPersonCount(any)).thenReturn(null);
 
       notifier.updatePersonCount(7);
       expect(notifier.state.simulatedPersonCount, equals(7));
@@ -150,7 +135,8 @@ void main() {
       // Overriding dispose behaviour is opaque; just verify no crash + MQTT call
       notifier.dispose();
 
-      verify(mockMqtt.unsubscribeFromCamCount()).called(greaterThanOrEqualTo(1));
+      verify(mockMqtt.unsubscribeFromCamCount())
+          .called(greaterThanOrEqualTo(1));
     });
   });
 }

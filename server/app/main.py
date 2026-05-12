@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app import crud, state
 from app.routers import (
     buses, routes, ota, analytics, passengers, 
-    system, admin, dashboard, feedback, pm_zones
+    system, admin, dashboard, feedback, pm_zones, debug
 )
 from app.mqtt import client as mqtt_client, connect_mqtt, start_mqtt_loop, stop_mqtt_loop
 from core.config import settings
@@ -27,6 +27,22 @@ def init_sqlite():
                 timestamp DATETIME, 
                 lat REAL, 
                 lon REAL
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS ride_sessions (
+                session_id TEXT PRIMARY KEY,
+                device_id TEXT NOT NULL,
+                bus_mac TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at DATETIME NOT NULL,
+                expires_at DATETIME NOT NULL,
+                last_verified_at DATETIME NOT NULL,
+                last_verified_lat REAL NOT NULL,
+                last_verified_lon REAL NOT NULL,
+                ring_count INTEGER NOT NULL DEFAULT 0,
+                last_ring_at DATETIME,
+                ended_at DATETIME
             )
         ''')
         conn.commit()
@@ -125,6 +141,7 @@ app.include_router(passengers.router)
 app.include_router(feedback.router)
 app.include_router(pm_zones.router)
 app.include_router(admin.router)
+app.include_router(debug.router)
 
 # --- Static Assets ---
 app.mount("/static", StaticFiles(directory="static"), name="static")

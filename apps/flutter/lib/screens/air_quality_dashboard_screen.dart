@@ -9,10 +9,12 @@ class AirQualityDashboardScreen extends ConsumerStatefulWidget {
   const AirQualityDashboardScreen({super.key});
 
   @override
-  ConsumerState<AirQualityDashboardScreen> createState() => _AirQualityDashboardScreenState();
+  ConsumerState<AirQualityDashboardScreen> createState() =>
+      _AirQualityDashboardScreenState();
 }
 
-class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardScreen> {
+class _AirQualityDashboardScreenState
+    extends ConsumerState<AirQualityDashboardScreen> {
   String _timeRange = '1h';
   List<Map<String, dynamic>> _heatmapData = [];
 
@@ -47,9 +49,14 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
     // Compute stats
     double avgPm = 0;
     if (_heatmapData.isNotEmpty) {
-      final validPoints = _heatmapData.where((p) => (p['pm2_5'] ?? p['weight'] ?? 0) > 0).toList();
+      final validPoints = _heatmapData
+          .where((p) => (p['pm2_5'] ?? p['weight'] ?? 0) > 0)
+          .toList();
       if (validPoints.isNotEmpty) {
-        avgPm = validPoints.map((p) => (p['pm2_5'] ?? p['weight'] ?? 0) as num).reduce((a, b) => a + b) / validPoints.length;
+        avgPm = validPoints
+                .map((p) => (p['pm2_5'] ?? p['weight'] ?? 0) as num)
+                .reduce((a, b) => a + b) /
+            validPoints.length;
       }
     }
 
@@ -107,10 +114,12 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Pollution Distribution', style: theme.textTheme.titleMedium),
+                      Text('Pollution Distribution',
+                          style: theme.textTheme.titleMedium),
                       const SizedBox(height: 16),
                       _buildTrendBar('Good (0-15)', 0.6, Colors.green),
-                      _buildTrendBar('Moderate (15-35)', 0.3, Colors.yellow[700]!),
+                      _buildTrendBar(
+                          'Moderate (15-35)', 0.3, Colors.yellow[700]!),
                       _buildTrendBar('Unhealthy (35+)', 0.1, Colors.red),
                     ],
                   ),
@@ -123,11 +132,12 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
             // 4. Detailed Ranking
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Device Reporting Status', style: theme.textTheme.titleLarge),
+              child: Text('Device Reporting Status',
+                  style: theme.textTheme.titleLarge),
             ),
             const SizedBox(height: 8),
             ...buses.map((bus) => _buildBusAqiTile(bus)),
-            
+
             const SizedBox(height: 40),
           ],
         ),
@@ -154,11 +164,13 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
           const SizedBox(height: 8),
           Text(
             avgPm.toStringAsFixed(1),
-            style: theme.textTheme.displayLarge?.copyWith(color: color, fontSize: 48),
+            style: theme.textTheme.displayLarge
+                ?.copyWith(color: color, fontSize: 48),
           ),
           Text(
             status.label.toUpperCase(),
-            style: TextStyle(color: color, fontWeight: FontWeight.w900, letterSpacing: 1.2),
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.w900, letterSpacing: 1.2),
           ),
         ],
       ),
@@ -174,8 +186,11 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              Text('${(percent * 100).round()}%', style: const TextStyle(fontSize: 12)),
+              Text(label,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold)),
+              Text('${(percent * 100).round()}%',
+                  style: const TextStyle(fontSize: 12)),
             ],
           ),
           const SizedBox(height: 6),
@@ -203,7 +218,8 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
           backgroundColor: color.withValues(alpha: 0.1),
           child: Icon(Icons.sensors, color: color),
         ),
-        title: Text(bus.busName, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(bus.busName,
+            style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('Status: ${bus.isOffline ? "Offline" : "Online"}'),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -211,7 +227,8 @@ class _AirQualityDashboardScreenState extends ConsumerState<AirQualityDashboardS
           children: [
             Text(
               pm.toStringAsFixed(1),
-              style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 18),
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.bold, fontSize: 18),
             ),
             const Text('µg/m³', style: TextStyle(fontSize: 10)),
           ],

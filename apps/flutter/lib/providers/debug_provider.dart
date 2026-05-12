@@ -17,7 +17,11 @@ class DebugState {
     this.apiCallCount = 0,
   });
 
-  DebugState copyWith({bool? debugMode, bool? isDevMachine, String? deviceId, int? apiCallCount}) {
+  DebugState copyWith(
+      {bool? debugMode,
+      bool? isDevMachine,
+      String? deviceId,
+      int? apiCallCount}) {
     return DebugState(
       debugMode: debugMode ?? this.debugMode,
       isDevMachine: isDevMachine ?? this.isDevMachine,
@@ -46,7 +50,8 @@ class DebugNotifier extends StateNotifier<DebugState> {
       deviceId = info.identifierForVendor;
     }
 
-    final isAllowed = true; // Temporarily bypassed for testing so every user can access
+    final isAllowed =
+        true; // Temporarily bypassed for testing so every user can access
     state = state.copyWith(
       deviceId: deviceId,
       isDevMachine: isAllowed,

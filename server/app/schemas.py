@@ -46,6 +46,31 @@ class BusLocation(BaseModel):
 class RingRequest(BaseModel):
     bus_mac: str = "ESP32-CAM-01"
 
+
+class RideStartRequest(BaseModel):
+    bus_mac: str
+    device_id: str
+    user_lat: float
+    user_lon: float
+
+
+class RideEndRequest(BaseModel):
+    session_id: str
+    device_id: str
+
+
+class RideStatusRequest(BaseModel):
+    session_id: str
+    device_id: str
+
+
+class SecureRingRequest(BaseModel):
+    bus_mac: str
+    session_id: str
+    device_id: str
+    user_lat: float
+    user_lon: float
+
 # --- Route Schemas ---
 class RouteBase(BaseModel):
     name: str
@@ -160,6 +185,7 @@ class FirmwareUpdateResponse(BaseModel):
     message: str
     target_mac: str
     ota_url: str
+    version: str
 
 class AdminPasswordRequest(BaseModel):
     password: str

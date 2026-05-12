@@ -30,6 +30,7 @@ class Settings(BaseSettings):
 
     # OTA Settings
     OTA_FALLBACK_IP: str = "203.158.3.14"
+    OTA_PUBLIC_BASE_URL: Optional[str] = None
     
     # Database Settings
     DB_FILE: str = "bus_passengers.db"

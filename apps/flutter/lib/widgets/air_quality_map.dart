@@ -21,7 +21,8 @@ class AirQualityMapWidget extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<AirQualityMapWidget> createState() => _AirQualityMapWidgetState();
+  ConsumerState<AirQualityMapWidget> createState() =>
+      _AirQualityMapWidgetState();
 }
 
 class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
@@ -82,7 +83,9 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
 
     // Add live bus data
     for (final bus in widget.buses) {
-      if (bus.currentLat != null && bus.currentLon != null && bus.pm25 != null) {
+      if (bus.currentLat != null &&
+          bus.currentLon != null &&
+          bus.pm25 != null) {
         addPoint(bus.currentLat!, bus.currentLon!, bus.pm25!);
       }
     }
@@ -128,9 +131,9 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
           ),
           children: [
             TileLayer(
-              urlTemplate: isDark 
-                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+              urlTemplate: isDark
+                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+                  : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
               subdomains: const ['a', 'b', 'c', 'd'],
               userAgentPackageName: 'com.catcode.sut_smart_bus',
             ),
@@ -148,7 +151,10 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
               color: Theme.of(context).cardColor.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(32),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
+                BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4)),
               ],
             ),
             child: Row(
@@ -185,7 +191,8 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
         child: Text(
           range,
           style: TextStyle(
-            color: isSelected ? Colors.white : theme.textTheme.bodyMedium?.color,
+            color:
+                isSelected ? Colors.white : theme.textTheme.bodyMedium?.color,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
           ),
         ),

@@ -33,12 +33,14 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                 AirQualityMapWidget(
                   buses: buses,
                   timeRange: _timeRange,
-                  onTimeRangeChanged: (String range) => setState(() => _timeRange = range),
+                  onTimeRangeChanged: (String range) =>
+                      setState(() => _timeRange = range),
                 ),
                 // Debug FAB
                 if (debugMode)
                   Positioned(
-                    top: 60, left: 20,
+                    top: 60,
+                    left: 20,
                     child: FloatingActionButton.small(
                       backgroundColor: Colors.red,
                       onPressed: () {
@@ -57,10 +59,13 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
             child: Container(
               decoration: BoxDecoration(
                 color: theme.cardColor,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.1),
-                      offset: const Offset(0, -2), blurRadius: 5),
+                  BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.1),
+                      offset: const Offset(0, -2),
+                      blurRadius: 5),
                 ],
               ),
               child: Column(
@@ -75,7 +80,8 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                     child: ListView.builder(
                       itemCount: buses.length,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
-                      itemBuilder: (context, index) => _buildAQCard(buses[index], theme),
+                      itemBuilder: (context, index) =>
+                          _buildAQCard(buses[index], theme),
                     ),
                   ),
                 ],
@@ -105,33 +111,49 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(bus.busName,
-                      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.bold)),
                   Row(
                     children: [
                       if (isOffline)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
                           margin: const EdgeInsets.only(right: 5),
                           decoration: BoxDecoration(
-                            color: Colors.grey, borderRadius: BorderRadius.circular(15)),
+                              color: Colors.grey,
+                              borderRadius: BorderRadius.circular(15)),
                           child: const Text('OFFLINE',
-                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold)),
                         )
                       else
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
                           margin: const EdgeInsets.only(right: 5),
                           decoration: BoxDecoration(
-                            color: Colors.green, borderRadius: BorderRadius.circular(15)),
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(15)),
                           child: const Text('ONLINE',
-                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold)),
                         ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: aq.solidColor, borderRadius: BorderRadius.circular(15)),
+                            color: aq.solidColor,
+                            borderRadius: BorderRadius.circular(15)),
                         child: Text(aq.label,
-                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),
@@ -143,12 +165,14 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text.rich(TextSpan(text: 'PM2.5: ', children: [
-                    TextSpan(text: bus.pm25?.toStringAsFixed(1) ?? '--',
+                    TextSpan(
+                        text: bus.pm25?.toStringAsFixed(1) ?? '--',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const TextSpan(text: ' µg/m³'),
                   ])),
                   Text.rich(TextSpan(text: 'PM10: ', children: [
-                    TextSpan(text: bus.pm10?.toStringAsFixed(1) ?? '--',
+                    TextSpan(
+                        text: bus.pm10?.toStringAsFixed(1) ?? '--',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const TextSpan(text: ' µg/m³'),
                   ])),
@@ -160,12 +184,14 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text.rich(TextSpan(text: 'Temp: ', children: [
-                    TextSpan(text: bus.temp?.toStringAsFixed(1) ?? '--',
+                    TextSpan(
+                        text: bus.temp?.toStringAsFixed(1) ?? '--',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const TextSpan(text: ' °C'),
                   ])),
                   Text.rich(TextSpan(text: 'Hum: ', children: [
-                    TextSpan(text: bus.hum?.toStringAsFixed(0) ?? '--',
+                    TextSpan(
+                        text: bus.hum?.toStringAsFixed(0) ?? '--',
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     const TextSpan(text: ' %'),
                   ])),

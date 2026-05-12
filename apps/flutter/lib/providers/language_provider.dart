@@ -11,10 +11,11 @@ class LanguageState {
 }
 
 class LanguageNotifier extends StateNotifier<LanguageState> {
-  LanguageNotifier() : super(LanguageState(
-    language: 'en',
-    translations: _enTranslations,
-  )) {
+  LanguageNotifier()
+      : super(LanguageState(
+          language: 'en',
+          translations: _enTranslations,
+        )) {
     _loadSavedLanguage();
   }
 
@@ -37,7 +38,8 @@ class LanguageNotifier extends StateNotifier<LanguageState> {
   }
 }
 
-final languageProvider = StateNotifierProvider<LanguageNotifier, LanguageState>((ref) {
+final languageProvider =
+    StateNotifierProvider<LanguageNotifier, LanguageState>((ref) {
   return LanguageNotifier();
 });
 
@@ -55,7 +57,8 @@ const _enTranslations = {
   'routeAdmin': 'Bus Route Admin',
   'airQuality': 'Air Quality',
   'version': 'Version',
-  'appDescription': 'Smart transit & environmental monitoring for Suranaree University of Technology.',
+  'appDescription':
+      'Smart transit & environmental monitoring for Suranaree University of Technology.',
   'noActiveBuses': 'No active buses',
   'refresh': 'Refresh',
   'selectLanguage': 'Select Language',
@@ -74,7 +77,8 @@ const _thTranslations = {
   'routeAdmin': 'จัดการเส้นทาง',
   'airQuality': 'คุณภาพอากาศ',
   'version': 'เวอร์ชัน',
-  'appDescription': 'ระบบขนส่งอัจฉริยะและตรวจสอบสิ่งแวดล้อมสำหรับมหาวิทยาลัยเทคโนโลยีสุรนารี',
+  'appDescription':
+      'ระบบขนส่งอัจฉริยะและตรวจสอบสิ่งแวดล้อมสำหรับมหาวิทยาลัยเทคโนโลยีสุรนารี',
   'noActiveBuses': 'ไม่มีรถบัสที่ใช้งาน',
   'refresh': 'รีเฟรช',
   'selectLanguage': 'เลือกภาษา',

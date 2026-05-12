@@ -23,7 +23,9 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
 
   Future<void> _submitFeedback() async {
     final feedbackText = _feedbackController.text.trim();
-    final nameText = _nameController.text.trim().isEmpty ? 'App User' : _nameController.text.trim();
+    final nameText = _nameController.text.trim().isEmpty
+        ? 'App User'
+        : _nameController.text.trim();
 
     if (feedbackText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -37,7 +39,9 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
     });
 
     try {
-      final success = await ref.read(apiServiceProvider).submitFeedback(nameText, feedbackText);
+      final success = await ref
+          .read(apiServiceProvider)
+          .submitFeedback(nameText, feedbackText);
 
       if (mounted) {
         if (success) {
@@ -49,14 +53,17 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
           Navigator.of(context).pop();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to submit feedback. Please try again later.')),
+            const SnackBar(
+                content:
+                    Text('Failed to submit feedback. Please try again later.')),
           );
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('An error occurred submitting feedback.')),
+          const SnackBar(
+              content: Text('An error occurred submitting feedback.')),
         );
       }
     } finally {
@@ -118,7 +125,8 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
                       )
                     : const Text(
                         'Submit Feedback',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
                       ),
               ),
             ],

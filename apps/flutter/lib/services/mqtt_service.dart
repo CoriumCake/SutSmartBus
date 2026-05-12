@@ -5,7 +5,8 @@ import 'package:mqtt_client/mqtt_client.dart';
 import '../config/api_config.dart';
 import 'mqtt_client_factory.dart';
 
-typedef MqttMessageCallback = void Function(String topic, Map<String, dynamic> data);
+typedef MqttMessageCallback = void Function(
+    String topic, Map<String, dynamic> data);
 typedef CamCountCallback = void Function(int count);
 
 const _camCountTopic = 'sut/esp32_cam/count';
@@ -17,7 +18,8 @@ class MqttService {
 
   final _statusController = StreamController<MqttConnectionState>.broadcast();
   Stream<MqttConnectionState> get statusStream => _statusController.stream;
-  MqttConnectionState get currentState => _client?.connectionStatus?.state ?? MqttConnectionState.disconnected;
+  MqttConnectionState get currentState =>
+      _client?.connectionStatus?.state ?? MqttConnectionState.disconnected;
 
   /// Callback registered by [subscribeToCamCount].
   CamCountCallback? _camCountCallback;
@@ -33,7 +35,8 @@ class MqttService {
   ];
 
   Future<void> connect() async {
-    if (_isConnecting || (_client?.connectionStatus?.state == MqttConnectionState.connected)) {
+    if (_isConnecting ||
+        (_client?.connectionStatus?.state == MqttConnectionState.connected)) {
       return;
     }
 
@@ -44,17 +47,13 @@ class MqttService {
 
       final wsUrl = ApiConfig.mqttWsUrl;
       final uri = Uri.parse(wsUrl);
-      final clientIdentifier = 'sut_smart_bus_flutter_${DateTime.now().millisecondsSinceEpoch}';
+      final clientIdentifier =
+          'sut_smart_bus_flutter_${DateTime.now().millisecondsSinceEpoch}';
 
       // Use the platform-agnostic factory
-      final client = getMqttClient(
-        wsUrl, 
-        clientIdentifier, 
-        uri.port, 
-        useWebSocket: true,
-        secure: uri.scheme == 'wss'
-      );
-      
+      final client = getMqttClient(wsUrl, clientIdentifier, uri.port,
+          useWebSocket: true, secure: uri.scheme == 'wss');
+
       _client = client
         ..keepAlivePeriod = 30
         ..autoReconnect = true

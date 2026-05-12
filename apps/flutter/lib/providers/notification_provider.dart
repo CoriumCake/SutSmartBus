@@ -31,6 +31,7 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
   }
 }
 
-final notificationProvider = StateNotifierProvider<NotificationNotifier, NotificationState>((ref) {
+final notificationProvider =
+    StateNotifierProvider<NotificationNotifier, NotificationState>((ref) {
   return NotificationNotifier();
 });

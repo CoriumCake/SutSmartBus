@@ -24,7 +24,8 @@ int findClosestWaypointIndex(double lat, double lon, List<Waypoint> waypoints) {
 
   for (int i = 0; i < waypoints.length; i++) {
     final wp = waypoints[i];
-    final distance = getDistanceFromLatLonInM(lat, lon, wp.latitude, wp.longitude);
+    final distance =
+        getDistanceFromLatLonInM(lat, lon, wp.latitude, wp.longitude);
     if (distance < minDistance) {
       minDistance = distance;
       closestIndex = i;
@@ -44,7 +45,8 @@ NextStopResult? findNextStop(
   for (int i = currentIndex; i < waypoints.length; i++) {
     final wp = waypoints[i];
     if (wp.isStop && wp.stopName != null && wp.stopName!.trim().isNotEmpty) {
-      final distance = getDistanceFromLatLonInM(busLat, busLon, wp.latitude, wp.longitude);
+      final distance =
+          getDistanceFromLatLonInM(busLat, busLon, wp.latitude, wp.longitude);
       final etaSeconds = distance / averageSpeedMps;
       final etaMinutes = max(1, (etaSeconds / 60).round());
 

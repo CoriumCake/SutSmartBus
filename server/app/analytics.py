@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from . import crud
 from .database import db
+from .passenger_rules import normalize_passenger_count
 from core.config import settings
 
 # Get hardware locations collection
@@ -16,14 +17,160 @@ hardware_location_collection = db.get_collection("hardware_locations")
 def record_passenger_count(bus_mac: str, count: int, lat: float = 0.0, lon: float = 0.0):
     """Log passenger count to SQLite history for local analytics."""
     try:
+        normalized_count = normalize_passenger_count(count, lat, lon)
         with sqlite3.connect(settings.DB_FILE) as conn:
             conn.execute(
                 "INSERT INTO passenger_history (bus_mac, count, timestamp, lat, lon) VALUES (?, ?, ?, ?, ?)",
-                (bus_mac, count, datetime.now(timezone.utc).isoformat(), lat, lon)
+                (bus_mac, normalized_count, datetime.now(timezone.utc).isoformat(), lat, lon)
             )
             conn.commit()
+        return normalized_count
     except Exception as e:
         print(f"Error recording passenger count: {e}")
+        return 0
+
+
+def get_passenger_history(hours: int = 24) -> List[dict]:
+    """Return recent passenger-count history rows from SQLite."""
+    lookback_hours = max(1, hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+
+    with sqlite3.connect(settings.DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT bus_mac, count, timestamp, lat, lon
+            FROM passenger_history
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC
+            """,
+            (cutoff.isoformat(),),
+        ).fetchall()
+
+    normalized_rows = []
+    for row in rows:
+        item = dict(row)
+        item["count"] = normalize_passenger_count(
+            item.get("count"),
+            item.get("lat"),
+            item.get("lon"),
+        )
+        normalized_rows.append(item)
+
+    return normalized_rows
+
+
+def get_pax_stats(period: str = "daily") -> dict:
+    """Return aggregated passenger stats built from SQLite history."""
+    period_key = (period or "daily").lower()
+    if period_key == "weekly":
+        bucket_format = "%Y-%W"
+        label = "week"
+        lookback = timedelta(days=28)
+    else:
+        bucket_format = "%Y-%m-%d"
+        label = "day"
+        lookback = timedelta(days=14)
+
+    cutoff = datetime.now(timezone.utc) - lookback
+
+    with sqlite3.connect(settings.DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT
+                bus_mac,
+                count,
+                timestamp,
+                lat,
+                lon,
+                strftime(?, timestamp) AS bucket
+            FROM passenger_history
+            WHERE timestamp >= ?
+            ORDER BY timestamp ASC
+            """,
+            (bucket_format, cutoff.isoformat()),
+        ).fetchall()
+
+    if not rows:
+        return {
+            "period": period_key,
+            "total_samples": 0,
+            "overall_average": 0,
+            "peak_count": 0,
+            "peak_timestamp": None,
+            "buckets": [],
+        }
+
+    bucket_stats: dict[str, dict] = {}
+    total_count = 0
+    peak_row = None
+
+    for row in rows:
+        count = normalize_passenger_count(
+            row["count"],
+            row["lat"] if "lat" in row.keys() else None,
+            row["lon"] if "lon" in row.keys() else None,
+        )
+        total_count += count
+
+        peak_count = (
+            normalize_passenger_count(
+                peak_row["count"],
+                peak_row["lat"] if peak_row is not None and "lat" in peak_row.keys() else None,
+                peak_row["lon"] if peak_row is not None and "lon" in peak_row.keys() else None,
+            )
+            if peak_row is not None
+            else -1
+        )
+        if peak_row is None or count > peak_count:
+            peak_row = row
+
+        bucket = row["bucket"] or "unknown"
+        current = bucket_stats.setdefault(
+            bucket,
+            {
+                label: bucket,
+                "sample_count": 0,
+                "average_count": 0.0,
+                "max_count": 0,
+                "buses": {},
+            },
+        )
+        current["sample_count"] += 1
+        current["average_count"] += count
+        current["max_count"] = max(int(current["max_count"]), count)
+        current["buses"][row["bus_mac"]] = (
+            current["buses"].get(row["bus_mac"], 0) + 1
+        )
+
+    buckets = []
+    for bucket, stats in bucket_stats.items():
+        sample_count = int(stats["sample_count"])
+        buckets.append(
+            {
+                label: bucket,
+                "sample_count": sample_count,
+                "average_count": round(stats["average_count"] / sample_count, 2),
+                "max_count": int(stats["max_count"]),
+                "active_buses": len(stats["buses"]),
+            }
+        )
+
+    buckets.sort(key=lambda item: item[label])
+
+    return {
+        "period": period_key,
+        "total_samples": len(rows),
+        "overall_average": round(total_count / len(rows), 2),
+        "peak_count": normalize_passenger_count(
+            peak_row["count"],
+            peak_row["lat"] if peak_row is not None and "lat" in peak_row.keys() else None,
+            peak_row["lon"] if peak_row is not None and "lon" in peak_row.keys() else None,
+        ) if peak_row is not None else 0,
+        "peak_timestamp": peak_row["timestamp"] if peak_row is not None else None,
+        "buckets": buckets,
+    }
 
 
 async def get_zone_heatmap_data(hours: int = 24, grid_size: float = 0.001, bus_mac: Optional[str] = None):

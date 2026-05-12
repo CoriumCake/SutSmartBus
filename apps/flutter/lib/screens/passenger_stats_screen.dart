@@ -48,7 +48,6 @@ class PassengerStatsScreen extends ConsumerStatefulWidget {
 }
 
 class _PassengerStatsScreenState extends ConsumerState<PassengerStatsScreen> {
-  static const int _seatCapacity = 33;
   static const int _maxLookbackDays = 14;
 
   DateTime _selectedDate = DateTime.now();

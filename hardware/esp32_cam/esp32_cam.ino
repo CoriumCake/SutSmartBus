@@ -1,5 +1,6 @@
 #include "esp_camera.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPUpdate.h>
 #include <PsychicMqttClient.h>
 #include <Preferences.h>
@@ -35,6 +36,7 @@ unsigned long CLEAR_HOLD_MS = 250; // Quiet period before the detector is ready 
 int ZONE_L = 60;                // Left line boundary (0-160)
 int ZONE_R = 100;               // Right line boundary (0-160)
 unsigned long COOLDOWN = 700;   // ms between counts
+const int MAX_PASSENGER_COUNT = 40;
 
 // Globals
 int passengerCount = 0;
@@ -61,6 +63,17 @@ void beep(int duration) {
   digitalWrite(BUZZER_PIN, HIGH);
   delay(duration);
   digitalWrite(BUZZER_PIN, LOW);
+}
+
+int clampPassengerCount(int count) {
+  if (count < 0) return 0;
+  if (count > MAX_PASSENGER_COUNT) return MAX_PASSENGER_COUNT;
+  return count;
+}
+
+void savePassengerCount() {
+  passengerCount = clampPassengerCount(passengerCount);
+  preferences.putInt("cnt", passengerCount);
 }
 
 // MQTT Functions
@@ -105,10 +118,27 @@ void performOTA() {
 
   Serial.println("🔄 Starting OTA update...");
   Serial.printf("📥 Downloading: %s\n", otaUrl.c_str());
-
-  WiFiClient client;
   httpUpdate.rebootOnUpdate(false);
-  t_httpUpdate_return ret = httpUpdate.update(client, otaUrl);
+
+  const bool isHttps = otaUrl.startsWith("https://");
+  t_httpUpdate_return ret;
+
+  if (isHttps) {
+    WiFiClientSecure secureClient;
+    if (strlen(OTA_ROOT_CA) > 0) {
+      secureClient.setCACert(OTA_ROOT_CA);
+    } else if (OTA_ALLOW_INSECURE_TLS) {
+      Serial.println("⚠️ OTA TLS verification disabled.");
+      secureClient.setInsecure();
+    } else {
+      Serial.println("❌ OTA blocked: HTTPS URL requires OTA_ROOT_CA or OTA_ALLOW_INSECURE_TLS.");
+      return;
+    }
+    ret = httpUpdate.update(secureClient, otaUrl);
+  } else {
+    WiFiClient client;
+    ret = httpUpdate.update(client, otaUrl);
+  }
 
   switch (ret) {
     case HTTP_UPDATE_FAILED:
@@ -123,6 +153,16 @@ void performOTA() {
       ESP.restart();
       break;
   }
+}
+
+String extractJsonStringField(const String& message, const char* fieldName) {
+  String marker = String("\"") + fieldName + "\":\"";
+  int valueStart = message.indexOf(marker);
+  if (valueStart < 0) return "";
+  valueStart += marker.length();
+  int valueEnd = message.indexOf("\"", valueStart);
+  if (valueEnd <= valueStart) return "";
+  return message.substring(valueStart, valueEnd);
 }
 
 void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
@@ -141,20 +181,38 @@ void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
   Serial.printf("📨 MQTT [%s]: %s\n", topic, message.c_str());
 
   if (String(topic).indexOf("ota") >= 0) {
-    int urlStart = message.indexOf("\"url\":\"");
-    int versionStart = message.indexOf("\"version\":\"");
-    if (urlStart >= 0 && versionStart >= 0) {
-      urlStart += 7;
-      int urlEnd = message.indexOf("\"", urlStart);
-      versionStart += 11;
-      int versionEnd = message.indexOf("\"", versionStart);
-      if (urlEnd > urlStart && versionEnd > versionStart) {
-        otaUrl = message.substring(urlStart, urlEnd);
-        otaVersion = message.substring(versionStart, versionEnd);
-        Serial.printf("📥 OTA Update requested: v%s\n", otaVersion.c_str());
-        otaPending = true;
-      }
+    if (!OTA_ENABLED) {
+      Serial.println("⚠️ OTA command ignored because OTA is disabled in config.");
+      return;
     }
+
+    const String targetMac = extractJsonStringField(message, "mac");
+    const bool isForAll = targetMac.length() == 0 || targetMac == "ALL";
+    const bool matchesBusMac =
+        targetMac == reported_bus_mac || targetMac == bus_mac;
+
+    if (!isForAll && !matchesBusMac) {
+      Serial.printf("ℹ️ OTA command ignored for MAC %s\n", targetMac.c_str());
+      return;
+    }
+
+    otaUrl = extractJsonStringField(message, "url");
+    otaVersion = extractJsonStringField(message, "version");
+
+    if (otaUrl.length() == 0 || otaVersion.length() == 0) {
+      Serial.println("⚠️ OTA command missing url or version.");
+      return;
+    }
+
+    if (otaVersion == FIRMWARE_VERSION) {
+      Serial.printf("ℹ️ OTA skipped. Already on version %s\n", FIRMWARE_VERSION);
+      return;
+    }
+
+    Serial.printf("📥 OTA Update requested: v%s for %s\n",
+                  otaVersion.c_str(),
+                  isForAll ? "ALL" : targetMac.c_str());
+    otaPending = true;
   }
 }
 
@@ -378,7 +436,8 @@ void setup() {
   delay(2000);
 
   preferences.begin("bus", false);
-  passengerCount = preferences.getInt("cnt", 0);
+  passengerCount = clampPassengerCount(preferences.getInt("cnt", 0));
+  preferences.putInt("cnt", passengerCount);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   setupMQTT();
@@ -507,11 +566,11 @@ void loop() {
           Serial.printf("🔴 EXIT Detected! Total: %d\n", passengerCount);
           sendMQTT("exit");
         } else {
-          passengerCount++;
+          if (passengerCount < MAX_PASSENGER_COUNT) passengerCount++;
           Serial.printf("🟢 ENTER Detected! Total: %d\n", passengerCount);
           sendMQTT("enter");
         }
-        preferences.putInt("cnt", passengerCount);
+        savePassengerCount();
         publishStatus();
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR
@@ -525,7 +584,7 @@ void loop() {
       if (triggerL && millis() - lastCountTime > COOLDOWN) {
         // Event: R -> L
         if (IS_RIGHT_TO_LEFT_ENTER) {
-          passengerCount++;
+          if (passengerCount < MAX_PASSENGER_COUNT) passengerCount++;
           Serial.printf("🟢 ENTER Detected! Total: %d\n", passengerCount);
           sendMQTT("enter");
         } else {
@@ -533,7 +592,7 @@ void loop() {
           Serial.printf("🔴 EXIT Detected! Total: %d\n", passengerCount);
           sendMQTT("exit");
         }
-        preferences.putInt("cnt", passengerCount);
+        savePassengerCount();
         publishStatus();
         lastCountTime = millis();
         currentState = 3; // WAIT_CLEAR

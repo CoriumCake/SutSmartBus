@@ -7,7 +7,7 @@ class AppTheme {
   // Brand Colors
   static const Color sutOrange = Color(0xFFF57C00);
   static const Color sutBlue = Color(0xFF1976D2);
-  
+
   // Neutral Colors - Light
   static const Color lightBg = Color(0xFFF8F9FA);
   static const Color lightSurface = Colors.white;
@@ -32,11 +32,13 @@ class AppTheme {
         error: const Color(0xFFBA1A1A),
       ),
       scaffoldBackgroundColor: lightBg,
-      textTheme: _buildTextTheme(base.textTheme, lightTextPrimary, lightTextSecondary),
+      textTheme:
+          _buildTextTheme(base.textTheme, lightTextPrimary, lightTextSecondary),
       cardTheme: _buildCardTheme(lightSurface),
       appBarTheme: _buildAppBarTheme(lightSurface, lightTextPrimary),
       elevatedButtonTheme: _buildButtonTheme(),
-      dividerTheme: const DividerThemeData(color: Color(0xFFDEE2E6), thickness: 1),
+      dividerTheme:
+          const DividerThemeData(color: Color(0xFFDEE2E6), thickness: 1),
     );
   }
 
@@ -52,36 +54,57 @@ class AppTheme {
         surface: darkBg,
       ),
       scaffoldBackgroundColor: darkBg,
-      textTheme: _buildTextTheme(base.textTheme, darkTextPrimary, darkTextSecondary),
+      textTheme:
+          _buildTextTheme(base.textTheme, darkTextPrimary, darkTextSecondary),
       cardTheme: _buildCardTheme(darkSurface),
       appBarTheme: _buildAppBarTheme(darkBg, darkTextPrimary),
       elevatedButtonTheme: _buildButtonTheme(),
-      dividerTheme: const DividerThemeData(color: Color(0xFF44474E), thickness: 1),
+      dividerTheme:
+          const DividerThemeData(color: Color(0xFF44474E), thickness: 1),
     );
   }
 
-  static TextTheme _buildTextTheme(TextTheme base, Color primary, Color secondary) {
+  static TextTheme _buildTextTheme(
+      TextTheme base, Color primary, Color secondary) {
     return GoogleFonts.plusJakartaSansTextTheme(base).copyWith(
       displayLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 32, fontWeight: FontWeight.w800, color: primary, letterSpacing: -0.5,
+        fontSize: 32,
+        fontWeight: FontWeight.w800,
+        color: primary,
+        letterSpacing: -0.5,
       ),
       displayMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 28, fontWeight: FontWeight.w800, color: primary, letterSpacing: -0.5,
+        fontSize: 28,
+        fontWeight: FontWeight.w800,
+        color: primary,
+        letterSpacing: -0.5,
       ),
       titleLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 20, fontWeight: FontWeight.w700, color: primary,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: primary,
       ),
       titleMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 16, fontWeight: FontWeight.w600, color: primary,
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        color: primary,
       ),
       bodyLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 16, fontWeight: FontWeight.w500, color: primary, height: 1.5,
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+        color: primary,
+        height: 1.5,
       ),
       bodyMedium: GoogleFonts.plusJakartaSans(
-        fontSize: 14, fontWeight: FontWeight.w500, color: secondary, height: 1.5,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        color: secondary,
+        height: 1.5,
       ),
       labelLarge: GoogleFonts.plusJakartaSans(
-        fontSize: 14, fontWeight: FontWeight.w700, color: sutOrange,
+        fontSize: 14,
+        fontWeight: FontWeight.w700,
+        color: sutOrange,
       ),
     );
   }
@@ -105,7 +128,9 @@ class AppTheme {
       elevation: 0,
       centerTitle: false,
       titleTextStyle: GoogleFonts.plusJakartaSans(
-        fontSize: 20, fontWeight: FontWeight.w800, color: text,
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+        color: text,
       ),
     );
   }

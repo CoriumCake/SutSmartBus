@@ -45,7 +45,8 @@ For production, you can expose the FastAPI API and MQTT WebSocket endpoint throu
 3. In the Cloudflare dashboard, point your public hostnames to:
    - `https://api.your-domain.com` -> `http://server:8000`
    - `https://mqtt.your-domain.com` -> `http://mosquitto:9001`
-4. Start the stack with the tunnel override:
+4. In `server/.env`, set `OTA_PUBLIC_BASE_URL=https://api.your-domain.com` if ESP32 devices should download OTA firmware through the tunnel/public internet.
+5. Start the stack with the tunnel override:
 
 ```bash
 docker-compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d --build

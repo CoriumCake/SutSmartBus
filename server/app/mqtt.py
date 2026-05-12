@@ -6,6 +6,11 @@ import time
 import sqlite3
 from datetime import datetime, timezone
 from . import crud, models, constants, state
+from .passenger_rules import (
+    is_at_default_parking,
+    normalize_passenger_count,
+    seats_available_for_count,
+)
 from core.config import settings
 
 
@@ -159,10 +164,26 @@ def on_message(client, userdata, msg):
                     ).result(timeout=1)
 
                 resolved_mac = resolved_bus.get("mac_address") if resolved_bus else bus_mac
+                resolved_lat = data.get("lat")
+                resolved_lon = data.get("lon")
+                if resolved_lat is None and resolved_bus is not None:
+                    resolved_lat = resolved_bus.get("current_lat")
+                if resolved_lon is None and resolved_bus is not None:
+                    resolved_lon = resolved_bus.get("current_lon")
+                current_passengers = normalize_passenger_count(
+                    current_passengers,
+                    resolved_lat,
+                    resolved_lon,
+                )
                 
                 # Store in SQLite history
                 from .analytics import record_passenger_count
-                record_passenger_count(resolved_mac, current_passengers)
+                record_passenger_count(
+                    resolved_mac,
+                    current_passengers,
+                    resolved_lat or 0.0,
+                    resolved_lon or 0.0,
+                )
                 
                 # Update global count in shared state
                 with state.state.passenger_lock:
@@ -173,7 +194,7 @@ def on_message(client, userdata, msg):
                 # Sync with Seats in MongoDB
                 if state.state.main_loop:
                     async def sync_seats(mac):
-                        seats_available = max(0, constants.TOTAL_SEATS - current_passengers)
+                        seats_available = seats_available_for_count(current_passengers)
                         updated_bus = await crud.update_bus_location(
                             mac_address=mac, lat=None, lon=None,
                             seats_available=seats_available, pm2_5=0, pm10=0,
@@ -223,9 +244,12 @@ def on_message(client, userdata, msg):
         if person_count is None:
             person_count = payload.get("count")
         if person_count is not None:
-            person_count = int(person_count)
-            if "seats_available" not in payload:
-                seats_available = max(0, constants.TOTAL_SEATS - person_count)
+            person_count = normalize_passenger_count(person_count, lat, lon)
+            if "seats_available" not in payload or is_at_default_parking(lat, lon):
+                seats_available = seats_available_for_count(person_count)
+        elif is_at_default_parking(lat, lon):
+            person_count = 0
+            seats_available = seats_available_for_count(0)
             
         rssi = payload.get("rssi")
         if rssi is not None:
@@ -233,12 +257,42 @@ def on_message(client, userdata, msg):
 
         if state.state.main_loop:
             async def process_update_async():
+                previous_bus = await crud.get_bus_by_mac(bus_mac)
                 # Update DB
-                await crud.update_bus_location(
+                updated_bus = await crud.update_bus_location(
                     mac_address=bus_mac, bus_name=bus_name, lat=lat, lon=lon,
                     seats_available=seats_available, pm2_5=pm2_5, pm10=pm10, temp=temp, hum=hum,
                     person_count=person_count, rssi=rssi
                 )
+                previous_at_parking = (
+                    is_at_default_parking(
+                        previous_bus.get("current_lat"),
+                        previous_bus.get("current_lon"),
+                    )
+                    if previous_bus
+                    else False
+                )
+                current_at_parking = (
+                    is_at_default_parking(
+                        updated_bus.get("current_lat"),
+                        updated_bus.get("current_lon"),
+                    )
+                    if updated_bus
+                    else False
+                )
+                if (
+                    updated_bus
+                    and current_at_parking
+                    and not previous_at_parking
+                    and int((previous_bus or {}).get("person_count", 0) or 0) > 0
+                ):
+                    from .analytics import record_passenger_count
+                    record_passenger_count(
+                        bus_mac,
+                        0,
+                        updated_bus.get("current_lat") or 0.0,
+                        updated_bus.get("current_lon") or 0.0,
+                    )
                 # Create history entry
                 if lat is not None and lon is not None:
                     hw_loc = models.HardwareLocation(

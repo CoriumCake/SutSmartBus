@@ -3,6 +3,11 @@ from bson import ObjectId
 from . import models, schemas
 from datetime import datetime, timezone
 from .database import db
+from .passenger_rules import (
+    is_at_default_parking,
+    normalize_passenger_count,
+    seats_available_for_count,
+)
 from core.config import settings
 
 # Get collections
@@ -38,8 +43,9 @@ async def create_bus(bus: models.Bus):
 async def update_bus_location(mac_address: str, lat: float | None, lon: float | None, seats_available: int, pm2_5: float, pm10: float, bus_name: str = None, temp: float = 0.0, hum: float = 0.0, person_count: int = None, rssi: int = None):
     # This is an 'upsert' operation: it updates a bus if it exists, or creates it if it doesn't.
     # This is useful for when a bus device comes online for the first time.
+    existing_bus = await get_bus_by_mac(mac_address)
+
     update_data = {
-        "seats_available": seats_available,
         "pm2_5": pm2_5,
         "pm10": pm10,
         "temp": temp,
@@ -47,9 +53,6 @@ async def update_bus_location(mac_address: str, lat: float | None, lon: float | 
         "last_updated": datetime.now(timezone.utc)
     }
     
-    if person_count is not None:
-        update_data["person_count"] = person_count
-        
     if rssi is not None:
         update_data["rssi"] = rssi
     
@@ -62,11 +65,27 @@ async def update_bus_location(mac_address: str, lat: float | None, lon: float | 
     # When a device comes online before GPS/PM hardware reports a real location,
     # place it at a predictable fallback point so the app can still render it.
     if lat is None and lon is None:
-        existing_bus = await get_bus_by_mac(mac_address)
         if not existing_bus or existing_bus.get("current_lat") is None or existing_bus.get("current_lon") is None:
             update_data["current_lat"] = settings.DEFAULT_BUS_LAT
             update_data["current_lon"] = settings.DEFAULT_BUS_LON
-        
+
+    effective_lat = update_data.get("current_lat", existing_bus.get("current_lat") if existing_bus else None)
+    effective_lon = update_data.get("current_lon", existing_bus.get("current_lon") if existing_bus else None)
+
+    if person_count is not None:
+        normalized_count = normalize_passenger_count(person_count, effective_lat, effective_lon)
+        update_data["person_count"] = normalized_count
+        update_data["seats_available"] = seats_available_for_count(normalized_count)
+    else:
+        current_count = existing_bus.get("person_count", 0) if existing_bus else 0
+        if is_at_default_parking(effective_lat, effective_lon):
+            update_data["person_count"] = 0
+            update_data["seats_available"] = seats_available_for_count(0)
+        else:
+            update_data["seats_available"] = max(0, seats_available)
+            if existing_bus and current_count is not None:
+                update_data.setdefault("person_count", current_count)
+
     if bus_name:
         # Prevent overwriting a good name with a default "Bus-MAC" name
         # Only update if the new name is NOT a generated default, OR if we are creating a new bus

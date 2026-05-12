@@ -12,7 +12,8 @@ class ThemeState {
 }
 
 class ThemeNotifier extends StateNotifier<ThemeState> {
-  ThemeNotifier() : super(ThemeState(isDark: false, themeData: lightThemeData)) {
+  ThemeNotifier()
+      : super(ThemeState(isDark: false, themeData: lightThemeData)) {
     _loadSavedTheme();
   }
 

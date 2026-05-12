@@ -89,9 +89,39 @@ class ApiService {
 
   Future<List<BusRoute>> fetchRoutes() async {
     try {
-      // 1. Fetch all routes
+      final mappingRes = await _dio.get('/api/bus-route-mapping');
+      final mappedRouteEntries = (mappingRes.data['routes'] as List?)
+              ?.map((route) => Map<String, dynamic>.from(route as Map))
+              .toList() ??
+          [];
+      final mappedRoutes = <BusRoute>[];
+
+      for (final routeEntry in mappedRouteEntries) {
+        final filename = routeEntry['file']?.toString();
+        if (filename == null || filename.isEmpty) {
+          continue;
+        }
+
+        try {
+          final routeFileRes = await _dio.get('/api/route-file/$filename');
+          if (routeFileRes.data is Map<String, dynamic>) {
+            mappedRoutes.add(BusRoute.fromJson({
+              ...(routeFileRes.data as Map<String, dynamic>),
+              'route_id': routeEntry['route_id'],
+              'route_name': routeEntry['route_name'],
+              'route_color': routeEntry['route_color'],
+            }));
+          }
+        } catch (e) {
+          debugPrint('[ApiService] Error fetching route file $filename: $e');
+        }
+      }
+
+      if (mappedRoutes.isNotEmpty) {
+        return mappedRoutes;
+      }
+
       final routesRes = await _dio.get('/api/routes');
-      // 2. Fetch all stops (server doesn't have route-specific stops endpoint yet)
       final stopsRes = await _dio.get('/api/stops');
 
       final allStops = (stopsRes.data as List?)
@@ -106,8 +136,6 @@ class ApiService {
 
       if (routesRes.data is List) {
         return (routesRes.data as List).map((r) {
-          // In this server version, we might need to filter stops by route
-          // For now, we'll attach all stops or handle via mapping if available
           return BusRoute.fromJson({
             ...r as Map<String, dynamic>,
             'waypoints': allStops,

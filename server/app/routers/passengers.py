@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import sqlite3
 from app import analytics as analytics_module
+from app.passenger_rules import normalize_passenger_count
 from core.config import settings
 from pydantic import BaseModel
 
@@ -27,8 +28,13 @@ async def update_passenger_count(
     Updates SQLite DB for history.
     """
     try:
-        analytics_module.record_passenger_count(bus_mac, count, lat, lon)
-        return {"success": True, "bus": bus_mac, "new_count": count}
+        normalized_count = analytics_module.record_passenger_count(
+            bus_mac,
+            count,
+            lat,
+            lon,
+        )
+        return {"success": True, "bus": bus_mac, "new_count": normalized_count}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -50,6 +56,12 @@ async def get_latest_pax_counts():
         rows = cursor.fetchall()
         conn.close()
         
-        return [dict(row) for row in rows]
+        normalized_rows = []
+        for row in rows:
+            item = dict(row)
+            item["count"] = normalize_passenger_count(item.get("count"))
+            normalized_rows.append(item)
+
+        return normalized_rows
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

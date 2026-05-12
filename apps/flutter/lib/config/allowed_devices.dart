@@ -1,2 +1,1 @@
-const allowedDeviceIds = <String>{
-};
+const allowedDeviceIds = <String>{};

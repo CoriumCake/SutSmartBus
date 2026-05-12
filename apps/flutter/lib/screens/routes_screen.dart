@@ -1,19 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/data_provider.dart';
-import '../providers/debug_provider.dart';
-import '../providers/language_provider.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
-import '../services/bus_service.dart';
-import '../services/route_storage_service.dart';
-import '../services/bus_mapping_service.dart';
+import '../providers/data_provider.dart';
+import '../providers/language_provider.dart';
 import '../utils/route_helpers.dart';
-import '../models/waypoint.dart';
-import 'package:file_picker/file_picker.dart';
-import 'dart:convert';
-import 'dart:io';
 import '../widgets/bus_card.dart';
 
 class RoutesScreen extends ConsumerStatefulWidget {
@@ -24,22 +16,20 @@ class RoutesScreen extends ConsumerStatefulWidget {
 }
 
 class _RoutesScreenState extends ConsumerState<RoutesScreen> {
-  Map<String, BusRouteInfo> _busRoutes = {};
-  List<BusRoute> _localRoutes = [];
   int _passengerCount = 0;
-  final BusService _busService = BusService();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
-    _loadLocalRoutes();
     _fetchPassengerCount();
   }
 
-  Future<void> _loadLocalRoutes() async {
-    final storage = RouteStorageService();
-    final routes = await storage.getAllRoutes();
-    setState(() => _localRoutes = routes);
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchPassengerCount() async {
@@ -50,255 +40,131 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
     }
   }
 
-  Future<void> _calculateBusRoutes(List<Bus> buses) async {
-    final mappingService = BusMappingService();
-    final storageService = RouteStorageService();
-    final mappings = await mappingService.getAllMappings();
-    final routeMap = <String, BusRouteInfo>{};
-
-    for (final bus in buses) {
-      final routeId = mappings[bus.busMac];
-      if (routeId != null) {
-        final route = await storageService.loadRoute(routeId);
-        if (route != null) {
-          final nextStop = findNextStop(
-            bus.currentLat, bus.currentLon, route.waypoints,
-          );
-          routeMap[bus.busMac] = BusRouteInfo(route: route, nextStop: nextStop);
-        }
-      }
-    }
-
-    if (mounted) setState(() => _busRoutes = routeMap);
-  }
-
-  Future<void> _importWaypoints() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
-      if (result == null || result.files.isEmpty) return;
-      
-      final file = result.files.single;
-      String content = '';
-      if (file.bytes != null) {
-        content = utf8.decode(file.bytes!);
-      } else if (file.path != null) {
-        content = await File(file.path!).readAsString();
-      } else {
-        return;
-      }
-
-      final dynamic decoded = jsonDecode(content);
-      List<dynamic> jsonList = [];
-      String suggestedName = '';
-
-      if (decoded is List) {
-        jsonList = decoded;
-      } else if (decoded is Map<String, dynamic>) {
-        if (decoded.containsKey('waypoints') && decoded['waypoints'] is List) {
-          jsonList = decoded['waypoints'] as List;
-        }
-        if (decoded.containsKey('routeName')) {
-          suggestedName = decoded['routeName'].toString();
-        } else if (decoded.containsKey('name')) {
-          suggestedName = decoded['name'].toString();
-        }
-      } else {
-        throw Exception('Invalid JSON format. Expected a list of waypoints or a route object.');
-      }
-
-      final waypoints = jsonList.map((j) => Waypoint.fromJson(j as Map<String, dynamic>)).toList();
-
-      if (waypoints.isNotEmpty && mounted) {
-        final nameController = TextEditingController(text: suggestedName);
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Import Route'),
-            content: TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'Route Name'),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-        );
-
-        if (confirmed == true && nameController.text.isNotEmpty) {
-          final newRoute = BusRoute(
-            routeId: DateTime.now().millisecondsSinceEpoch.toString(),
-            routeName: nameController.text,
-            waypoints: waypoints,
-          );
-          final storage = RouteStorageService();
-          await storage.saveRoute(newRoute);
-          await _loadLocalRoutes();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Imported ${waypoints.length} waypoints')),
-            );
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to import: $e')),
-        );
-      }
-    }
-  }
-
   Future<void> _onRefresh() async {
     await ref.read(dataProvider.notifier).refreshBuses();
     await _fetchPassengerCount();
   }
 
-  Future<void> _ringBus(Bus bus) async {
-    try {
-      await _busService.ringBell(bus.busMac);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ring signal sent to ${bus.busName}')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to send ring: $e')),
-      );
-    }
-  }
-
   void _handleBusPress(Bus bus) {
-    final routeInfo = _busRoutes[bus.busMac];
     context.go('/map', extra: {
-      'selectedRoute': routeInfo?.route,
       'focusBus': bus,
     });
+  }
+
+  BusRouteInfo? _routeInfoForBus(Bus bus, List<BusRoute> routes) {
+    final route = routes.length == 1
+        ? routes.first
+        : routes
+            .where((candidate) => candidate.routeId == bus.routeId)
+            .firstOrNull;
+    if (route == null) {
+      return null;
+    }
+
+    return BusRouteInfo(
+      route: route,
+      nextStop: findNextStop(
+        bus.currentLat,
+        bus.currentLon,
+        route.waypoints,
+      ),
+    );
+  }
+
+  bool _matchesSearch(Bus bus, BusRouteInfo? routeInfo) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) {
+      return true;
+    }
+
+    return bus.busName.toLowerCase().contains(query) ||
+        (routeInfo?.route.routeName.toLowerCase().contains(query) ?? false) ||
+        (routeInfo?.nextStop?.stopName.toLowerCase().contains(query) ?? false);
   }
 
   @override
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
-    final debugMode = ref.watch(debugProvider).debugMode;
+    final routes = ref.watch(routesProvider);
     final theme = Theme.of(context);
     final t = ref.watch(languageProvider).t;
-
-    // Recalculate bus routes when buses change
-    ref.listen(busesProvider, (prev, next) {
-      _calculateBusRoutes(next);
-    });
+    final busCards = buses
+        .map((bus) => (bus: bus, routeInfo: _routeInfoForBus(bus, routes)))
+        .where((entry) => _matchesSearch(entry.bus, entry.routeInfo))
+        .toList();
 
     return SafeArea(
       child: Column(
         children: [
-          // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 15, 20, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(t('routes'),
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
-                if (debugMode)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.file_upload, color: theme.colorScheme.primary, size: 28),
-                        tooltip: 'Import Waypoints',
-                        onPressed: _importWaypoints,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.add_circle, color: theme.colorScheme.primary, size: 28),
-                        onPressed: () => context.push('/route-editor'),
-                      ),
-                    ],
-                  ),
-              ],
+            padding: const EdgeInsets.fromLTRB(20, 15, 20, 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                t('routes'),
+                style: theme.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
             ),
           ),
-
-          // Bus count banner
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.directions_bus, size: 20, color: theme.colorScheme.primary),
-                const SizedBox(width: 8),
-                Text(
-                  '${buses.length} active ${buses.length == 1 ? "bus" : "buses"}',
-                  style: theme.textTheme.bodyMedium,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Search bus, route, or stop',
+                prefixIcon: const Icon(Icons.search_rounded),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
                 ),
-              ],
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                suffixIcon: _searchQuery.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _searchQuery = '';
+                          });
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+              ),
             ),
           ),
-
-          // Bus list
           Expanded(
             child: buses.isEmpty
                 ? _buildEmptyState(theme)
-                : RefreshIndicator(
-                    onRefresh: _onRefresh,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: buses.length,
-                      itemBuilder: (context, index) {
-                        final bus = buses[index];
-                        final routeInfo = _busRoutes[bus.busMac];
-                        return BusCard(
-                          bus: bus,
-                          routeInfo: routeInfo,
-                          passengerCount: _passengerCount,
-                          onTap: () => _handleBusPress(bus),
-                          onRingBell: () => _ringBus(bus),
-                        );
-                      },
-                    ),
-                  ),
-          ),
-
-          // Debug: Saved routes chips
-          if (debugMode && _localRoutes.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('📁 Saved Routes (${_localRoutes.length})',
-                      style: theme.textTheme.labelMedium),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 36,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _localRoutes.length,
-                      itemBuilder: (context, i) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ActionChip(
-                          label: Text(_localRoutes[i].routeName),
-                          onPressed: () => context.push(
-                            '/route-editor?routeId=${_localRoutes[i].routeId}',
-                          ),
+                : busCards.isEmpty
+                    ? _buildNoSearchResults(theme)
+                    : RefreshIndicator(
+                        onRefresh: _onRefresh,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          itemCount: busCards.length,
+                          itemBuilder: (context, index) {
+                            final bus = busCards[index].bus;
+                            final routeInfo = busCards[index].routeInfo;
+                            return BusCard(
+                              bus: bus,
+                              routeInfo: routeInfo,
+                              passengerCount: _passengerCount,
+                              onTap: () => _handleBusPress(bus),
+                              showActionButton: false,
+                            );
+                          },
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          ),
         ],
       ),
     );
@@ -309,17 +175,38 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.directions_bus_outlined, size: 64, color: theme.disabledColor),
+          Icon(Icons.directions_bus_outlined,
+              size: 64, color: theme.disabledColor),
           const SizedBox(height: 16),
           Text('No active buses', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          Text("Buses will appear here when they're online",
-              style: theme.textTheme.bodySmall),
+          Text(
+            "Buses will appear here when they're online",
+            style: theme.textTheme.bodySmall,
+          ),
           const SizedBox(height: 24),
           OutlinedButton.icon(
             icon: const Icon(Icons.refresh),
             label: const Text('Refresh'),
             onPressed: _onRefresh,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResults(ThemeData theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.search_off_rounded, size: 64, color: theme.disabledColor),
+          const SizedBox(height: 16),
+          Text('No matching buses', style: theme.textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text(
+            'Try a different bus name, route, or stop',
+            style: theme.textTheme.bodySmall,
           ),
         ],
       ),

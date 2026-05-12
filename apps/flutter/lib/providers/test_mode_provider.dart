@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/mqtt_service.dart';
 import 'data_provider.dart';
-import 'simulation_provider.dart';
 
 // ─── Preset camera URLs ────────────────────────────────────────────────────────
 const List<String> kCamUrls = [
@@ -46,9 +45,11 @@ class TestModeState {
   }) {
     return TestModeState(
       enabled: enabled ?? this.enabled,
-      selectedCamUrl: clearCamUrl ? null : (selectedCamUrl ?? this.selectedCamUrl),
+      selectedCamUrl:
+          clearCamUrl ? null : (selectedCamUrl ?? this.selectedCamUrl),
       simulatedPersonCount: simulatedPersonCount ?? this.simulatedPersonCount,
-      simulatedUserPosition: simulatedUserPosition ?? this.simulatedUserPosition,
+      simulatedUserPosition:
+          simulatedUserPosition ?? this.simulatedUserPosition,
     );
   }
 }
@@ -56,12 +57,11 @@ class TestModeState {
 // ─── Notifier ──────────────────────────────────────────────────────────────────
 class TestModeNotifier extends StateNotifier<TestModeState> {
   final MqttService _mqtt;
-  final SimulationNotifier _simulation;
 
   Timer? _positionTimer;
   int _positionIndex = 0;
 
-  TestModeNotifier(this._mqtt, this._simulation) : super(const TestModeState());
+  TestModeNotifier(this._mqtt) : super(const TestModeState());
 
   /// Toggle test mode on/off.
   void toggle({double? initialLat, double? initialLon}) {
@@ -80,9 +80,6 @@ class TestModeNotifier extends StateNotifier<TestModeState> {
   /// Called externally to update the simulated person count (e.g. from MQTT).
   void updatePersonCount(int count) {
     state = state.copyWith(simulatedPersonCount: count);
-    if (state.enabled) {
-      _simulation.setPersonCount(count);
-    }
   }
 
   // ─── Private ──────────────────────────────────────────────────────────────
@@ -95,14 +92,8 @@ class TestModeNotifier extends StateNotifier<TestModeState> {
       simulatedUserPosition: kPresetPositions.first,
     );
 
-    // Push initial person count to simulation
-    _simulation.setPersonCount(0);
-
     // Subscribe to the ESP32-CAM person-count MQTT topic
     _mqtt.subscribeToCamCount(_onCamCount);
-
-    // Start fake bus simulation
-    _simulation.toggleSimulation(true, lat: initialLat, lon: initialLon);
 
     // Start periodic position cycling
     _positionIndex = 0;
@@ -122,7 +113,6 @@ class TestModeNotifier extends StateNotifier<TestModeState> {
     _positionTimer = null;
 
     _mqtt.unsubscribeFromCamCount();
-    _simulation.toggleSimulation(false);
 
     state = state.copyWith(
       enabled: false,
@@ -138,8 +128,6 @@ class TestModeNotifier extends StateNotifier<TestModeState> {
   void _onCamCount(int count) {
     if (state.enabled) {
       state = state.copyWith(simulatedPersonCount: count);
-      // Push updated person count to simulation
-      _simulation.setPersonCount(count);
     }
   }
 
@@ -155,6 +143,5 @@ class TestModeNotifier extends StateNotifier<TestModeState> {
 final testModeProvider =
     StateNotifierProvider<TestModeNotifier, TestModeState>((ref) {
   final mqtt = ref.watch(mqttServiceProvider);
-  final simulation = ref.watch(simulationProvider.notifier);
-  return TestModeNotifier(mqtt, simulation);
+  return TestModeNotifier(mqtt);
 });

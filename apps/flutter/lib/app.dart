@@ -8,8 +8,6 @@ import 'screens/map_screen.dart';
 import 'screens/routes_screen.dart';
 import 'screens/air_quality_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/route_editor_screen.dart';
-import 'screens/bus_route_admin_screen.dart';
 import 'screens/bus_management_screen.dart';
 import 'screens/air_quality_dashboard_screen.dart';
 import 'screens/about_screen.dart';
@@ -91,21 +89,6 @@ final goRouter = GoRouter(
       ],
     ),
     // Stack screens (pushed on top of tabs)
-    GoRoute(
-      path: '/route-editor',
-      name: 'routeEditor',
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) {
-        final routeId = state.uri.queryParameters['routeId'];
-        return RouteEditorScreen(routeId: routeId);
-      },
-    ),
-    GoRoute(
-      path: '/bus-route-admin',
-      name: 'busRouteAdmin',
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const BusRouteAdminScreen(),
-    ),
     GoRoute(
       path: '/bus-management',
       name: 'busManagement',

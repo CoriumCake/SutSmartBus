@@ -24,8 +24,10 @@ class OnboardBottomSheet extends StatelessWidget {
     // PM 2.5 dot color
     Color pm25Color = Colors.green;
     if (bus.pm25 != null) {
-      if (bus.pm25! > 55.4) pm25Color = Colors.red;
-      else if (bus.pm25! > 35.4) pm25Color = Colors.orange;
+      if (bus.pm25! > 55.4)
+        pm25Color = Colors.red;
+      else if (bus.pm25! > 35.4)
+        pm25Color = Colors.orange;
       else if (bus.pm25! > 12) pm25Color = Colors.yellow[700]!;
     }
 
@@ -33,9 +35,16 @@ class OnboardBottomSheet extends StatelessWidget {
     String rssiText = 'Good';
     Color rssiColor = Colors.green;
     if (bus.rssi != null) {
-      if (bus.rssi! < -80) { rssiText = 'Weak'; rssiColor = Colors.red; }
-      else if (bus.rssi! < -60) { rssiText = 'Fair'; rssiColor = Colors.orange; }
-      else { rssiText = 'Excellent'; rssiColor = Colors.green; }
+      if (bus.rssi! < -80) {
+        rssiText = 'Weak';
+        rssiColor = Colors.red;
+      } else if (bus.rssi! < -60) {
+        rssiText = 'Fair';
+        rssiColor = Colors.orange;
+      } else {
+        rssiText = 'Excellent';
+        rssiColor = Colors.green;
+      }
     } else {
       rssiText = 'Unknown';
       rssiColor = Colors.grey;
@@ -86,7 +95,8 @@ class OnboardBottomSheet extends StatelessWidget {
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: Colors.grey[100],
                   borderRadius: BorderRadius.circular(16),
@@ -122,9 +132,9 @@ class OnboardBottomSheet extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 20),
-          
+
           // Stats Row (Gray Box)
           Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -164,7 +174,7 @@ class OnboardBottomSheet extends StatelessWidget {
                 ),
                 Container(width: 1, height: 30, color: Colors.grey[300]),
                 const SizedBox(width: 12),
-                
+
                 // Passengers
                 Expanded(
                   flex: 2,
@@ -182,7 +192,7 @@ class OnboardBottomSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${personCount ?? 0}/33', // Assuming capacity is 33 matching the design
+                        '${personCount ?? 0}/40',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -236,14 +246,15 @@ class OnboardBottomSheet extends StatelessWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 20),
-          
+
           // Ring Bell Button
           ElevatedButton(
             onPressed: () => onRingBell(bus.busMac),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF7C346), // Yellow color from image
+              backgroundColor:
+                  const Color(0xFFF7C346), // Yellow color from image
               foregroundColor: Colors.black, // Dark text/icon color
               padding: const EdgeInsets.symmetric(vertical: 16),
               elevation: 0,
@@ -254,7 +265,8 @@ class OnboardBottomSheet extends StatelessWidget {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.notifications_active, size: 24, color: Colors.black87),
+                Icon(Icons.notifications_active,
+                    size: 24, color: Colors.black87),
                 SizedBox(width: 12),
                 Text(
                   'RING BELL',

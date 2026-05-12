@@ -112,13 +112,6 @@ class SettingsScreen extends ConsumerWidget {
           ),
           _sectionCard(
             theme,
-            icon: Icons.map,
-            title: t('routeAdmin'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/bus-route-admin'),
-          ),
-          _sectionCard(
-            theme,
             icon: Icons.info_outline,
             title: t('about'),
             trailing: const Icon(Icons.chevron_right),

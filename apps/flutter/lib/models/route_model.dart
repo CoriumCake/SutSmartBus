@@ -21,27 +21,33 @@ class BusRoute {
 
   factory BusRoute.fromJson(Map<String, dynamic> json) {
     return BusRoute(
-      routeId: (json['id'] ?? json['routeId'] ?? '').toString(),
-      routeName: json['name'] ?? json['routeName'] ?? 'Unnamed Route',
+      routeId:
+          (json['id'] ?? json['routeId'] ?? json['route_id'] ?? '').toString(),
+      routeName: json['name'] ??
+          json['routeName'] ??
+          json['route_name'] ??
+          'Unnamed Route',
       waypoints: (json['waypoints'] as List<dynamic>?)
-          ?.map((w) => Waypoint.fromJson(w))
-          .toList() ?? [],
+              ?.map((w) => Waypoint.fromJson(w))
+              .toList() ??
+          [],
       busId: json['bus_id']?.toString() ?? json['busId']?.toString(),
-      routeColor: json['routeColor'] ?? '#2563eb',
+      routeColor: json['routeColor'] ?? json['route_color'] ?? '#2563eb',
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
     );
   }
 
   Map<String, dynamic> toJson() => {
-    'routeId': routeId,
-    'routeName': routeName,
-    'waypoints': waypoints.map((w) => w.toJson()).toList(),
-    'busId': busId,
-    'routeColor': routeColor,
-    'createdAt': createdAt,
-    'updatedAt': updatedAt,
-  };
+        'routeId': routeId,
+        'routeName': routeName,
+        'waypoints': waypoints.map((w) => w.toJson()).toList(),
+        'busId': busId,
+        'routeColor': routeColor,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt,
+      };
 
-  List<Waypoint> get stops => waypoints.where((w) => w.isStop && w.stopName != null).toList();
+  List<Waypoint> get stops =>
+      waypoints.where((w) => w.isStop && w.stopName != null).toList();
 }

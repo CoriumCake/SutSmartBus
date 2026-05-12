@@ -19,7 +19,7 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
   Map<String, dynamic>? _selectedZone;
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _radiusController = TextEditingController();
-  
+
   // SUT Center
   final LatLng _center = const LatLng(14.8789, 102.0163);
 
@@ -86,16 +86,17 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
       _selectedZone = Map.from(zone);
       _nameController.text = _selectedZone!['name'] ?? '';
       _radiusController.text = _selectedZone!['radius']?.toString() ?? '300';
-      _mapController.move(LatLng(zone['lat'], zone['lon']), _mapController.camera.zoom);
+      _mapController.move(
+          LatLng(zone['lat'], zone['lon']), _mapController.camera.zoom);
     });
   }
 
   Future<void> _saveZone() async {
     if (_selectedZone == null) return;
-    
+
     final name = _nameController.text.trim();
     final radius = int.tryParse(_radiusController.text.trim()) ?? 300;
-    
+
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Zone name is required')),
@@ -111,22 +112,29 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
     };
 
     final isNew = _selectedZone!['id'] == null;
-    
+
     // Show Loading
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()));
 
     bool success;
     if (isNew) {
       success = await ref.read(apiServiceProvider).createPMZone(zoneData);
     } else {
-      success = await ref.read(apiServiceProvider).updatePMZone(_selectedZone!['id'].toString(), zoneData);
+      success = await ref
+          .read(apiServiceProvider)
+          .updatePMZone(_selectedZone!['id'].toString(), zoneData);
     }
 
     if (mounted) {
       Navigator.pop(context); // Close loading
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Zone ${isNew ? 'created' : 'updated'} successfully')),
+          SnackBar(
+              content:
+                  Text('Zone ${isNew ? 'created' : 'updated'} successfully')),
         );
         setState(() => _selectedZone = null);
         _loadZones();
@@ -148,9 +156,12 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Zone?'),
-        content: Text('Are you sure you want to delete "${_selectedZone!['name']}"?'),
+        content: Text(
+            'Are you sure you want to delete "${_selectedZone!['name']}"?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -163,9 +174,14 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
     if (confirm != true) return;
     if (!mounted) return;
 
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()));
 
-    final success = await ref.read(apiServiceProvider).deletePMZone(_selectedZone!['id'].toString());
+    final success = await ref
+        .read(apiServiceProvider)
+        .deletePMZone(_selectedZone!['id'].toString());
 
     if (mounted) {
       Navigator.pop(context); // Close loading
@@ -197,8 +213,9 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
 
     // Existing Zones
     for (final zone in _zones) {
-      final isSelected = _selectedZone != null && _selectedZone!['id'] == zone['id'];
-      
+      final isSelected =
+          _selectedZone != null && _selectedZone!['id'] == zone['id'];
+
       // Don't draw the existing zone if it is currently being edited
       if (isSelected) continue;
 
@@ -226,7 +243,8 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 color: Colors.white70,
-                child: Text(zone['name'] ?? 'Zone', style: const TextStyle(fontSize: 10, color: Colors.black)),
+                child: Text(zone['name'] ?? 'Zone',
+                    style: const TextStyle(fontSize: 10, color: Colors.black)),
               )
             ],
           ),
@@ -261,8 +279,14 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               color: Colors.orange[100],
-              child: Text(_nameController.text.isNotEmpty ? _nameController.text : 'New Zone', 
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+              child: Text(
+                  _nameController.text.isNotEmpty
+                      ? _nameController.text
+                      : 'New Zone',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black)),
             )
           ],
         ),
@@ -303,43 +327,55 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
               ],
             ),
           ),
-          
           if (_selectedZone != null)
             Expanded(
               flex: 1,
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))]
-                ),
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    boxShadow: const [
+                      BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 4,
+                          offset: Offset(0, -2))
+                    ]),
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _selectedZone!['id'] == null ? 'Create New Zone' : 'Edit Zone',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                        _selectedZone!['id'] == null
+                            ? 'Create New Zone'
+                            : 'Edit Zone',
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
-                      const Text('Tap anywhere on the map to set the zone center.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const Text(
+                          'Tap anywhere on the map to set the zone center.',
+                          style: TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
                             child: TextField(
                               controller: _nameController,
-                              decoration: const InputDecoration(labelText: 'Zone Name', border: OutlineInputBorder()),
-                              onChanged: (_) => setState((){}),
+                              decoration: const InputDecoration(
+                                  labelText: 'Zone Name',
+                                  border: OutlineInputBorder()),
+                              onChanged: (_) => setState(() {}),
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: TextField(
                               controller: _radiusController,
-                              decoration: const InputDecoration(labelText: 'Radius (meters)', border: OutlineInputBorder()),
+                              decoration: const InputDecoration(
+                                  labelText: 'Radius (meters)',
+                                  border: OutlineInputBorder()),
                               keyboardType: TextInputType.number,
-                              onChanged: (_) => setState((){}),
+                              onChanged: (_) => setState(() {}),
                             ),
                           ),
                         ],
@@ -350,7 +386,11 @@ class _PMZoneEditorScreenState extends ConsumerState<PMZoneEditorScreen> {
                         children: [
                           TextButton(
                             onPressed: _deleteZone,
-                            child: Text(_selectedZone!['id'] == null ? 'Cancel' : 'Delete', style: const TextStyle(color: Colors.red)),
+                            child: Text(
+                                _selectedZone!['id'] == null
+                                    ? 'Cancel'
+                                    : 'Delete',
+                                style: const TextStyle(color: Colors.red)),
                           ),
                           const SizedBox(width: 16),
                           ElevatedButton.icon(
