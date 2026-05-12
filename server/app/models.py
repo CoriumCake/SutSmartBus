@@ -29,7 +29,7 @@ class MongoBaseModel(BaseModel):
 
 class Bus(MongoBaseModel):
     bus_name: Optional[str] = None
-    route_id: Optional[PyObjectId] = None
+    route_id: Optional[str] = None
     current_lat: Optional[float] = None
     current_lon: Optional[float] = None
     seats_available: int = 0
@@ -39,6 +39,7 @@ class Bus(MongoBaseModel):
     pm10: float = 0.0
     temp: float = 0.0
     hum: float = 0.0
+    rssi: Optional[int] = None
     last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Stop(MongoBaseModel):

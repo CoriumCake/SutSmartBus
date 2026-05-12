@@ -20,25 +20,55 @@ blocked_mac_collection = db.get_collection("blocked_macs")
 pm_zone_collection = db.get_collection("pm_zones")
 
 
+def _serialize_mongo_document(document):
+    if document is None:
+        return None
+
+    serialized = dict(document)
+
+    mongo_id = serialized.get("_id")
+    if isinstance(mongo_id, ObjectId):
+        serialized["_id"] = str(mongo_id)
+
+    route_id = serialized.get("route_id")
+    if isinstance(route_id, ObjectId):
+        serialized["route_id"] = str(route_id)
+
+    stops = serialized.get("stops")
+    if isinstance(stops, list):
+        serialized["stops"] = [
+            str(stop) if isinstance(stop, ObjectId) else stop
+            for stop in stops
+        ]
+
+    return serialized
+
+
 async def get_bus(bus_id: str):
-    return await bus_collection.find_one({"_id": ObjectId(bus_id)})
+    return _serialize_mongo_document(
+        await bus_collection.find_one({"_id": ObjectId(bus_id)})
+    )
 
 async def get_bus_by_mac(mac_address: str):
-    return await bus_collection.find_one({"mac_address": mac_address})
+    return _serialize_mongo_document(
+        await bus_collection.find_one({"mac_address": mac_address})
+    )
 
 async def get_bus_by_name(bus_name: str):
-    return await bus_collection.find_one({"bus_name": bus_name})
+    return _serialize_mongo_document(
+        await bus_collection.find_one({"bus_name": bus_name})
+    )
 
 async def get_buses(skip: int = 0, limit: int = 100):
     buses = await bus_collection.find().skip(skip).limit(limit).to_list(limit)
     print(f"DEBUG: get_buses returning {len(buses)} buses")
-    return buses
+    return [_serialize_mongo_document(bus) for bus in buses]
 
 async def create_bus(bus: models.Bus):
     bus_dict = bus.model_dump(by_alias=True, exclude=["id"])
     result = await bus_collection.insert_one(bus_dict)
     new_bus = await bus_collection.find_one({"_id": result.inserted_id})
-    return new_bus
+    return _serialize_mongo_document(new_bus)
 
 async def update_bus_location(mac_address: str, lat: float | None, lon: float | None, seats_available: int, pm2_5: float, pm10: float, bus_name: str = None, temp: float = 0.0, hum: float = 0.0, person_count: int = None, rssi: int = None):
     # This is an 'upsert' operation: it updates a bus if it exists, or creates it if it doesn't.
