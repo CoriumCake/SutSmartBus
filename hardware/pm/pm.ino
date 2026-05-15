@@ -3,13 +3,9 @@
 #include <HTTPUpdate.h>
 #include <TinyGPS++.h>
 #include <ArduinoJson.h>
-#include <SPI.h>
-#include <SD.h>
 #include <WebServer.h>
 
 #include <ESPmDNS.h>
-#include <Wire.h>
-#include <RTClib.h>
 #include "DHT.h"
 #include "config.h"
 
@@ -31,6 +27,10 @@
 #define DHT_READ_INTERVAL_MS 2000
 #endif
 
+#ifndef WIFI_RETRY_INTERVAL_MS
+#define WIFI_RETRY_INTERVAL_MS 10000
+#endif
+
 // OTA Update State
 bool otaPending = false;
 String otaUrl = "";
@@ -39,7 +39,6 @@ String otaVersion = "";
 // Hardware Objects
 PsychicMqttClient mqttClient;
 WebServer server(80);
-RTC_DS3231 rtc;
 DHT dht(DHTPIN, DHTTYPE);
 TinyGPSPlus gps;
 HardwareSerial gpsSerial(2);
@@ -50,22 +49,24 @@ char bus_mac[18];
 bool wifiConnected = false;
 float tempC = 0, humid = 0;
 uint16_t pm25 = 0, pm10 = 0;
-unsigned long lastDataPublish = 0, lastDhtRead = 0, last30s = 0, lastGpsPublish = 0;
-unsigned long lastDebugStatus = 0, lastPmsDebug = 0, lastGpsDebug = 0, lastMqttSkipDebug = 0;
-const char* logFilename = "/gps_log.csv";
+unsigned long lastDataPublish = 0, lastDhtRead = 0, lastGpsPublish = 0;
+unsigned long lastDebugStatus = 0, lastPmsDebug = 0, lastGpsDebug = 0, lastMqttSkipDebug = 0, lastWifiRetry = 0;
 bool mqttConfigured = false;
 bool mqttConnectAttempted = false;
 char mqttUri[128];
+uint8_t wifiNetworkIndex = 0;
 
 // --- Function Prototypes ---
 void handleWiFi();
+const char* currentWifiSsid();
+const char* currentWifiPassword();
+void startWiFiAttempt(bool rotateNetwork);
 void reconnectMQTT();
 void setupMQTT();
 void processGPS();
 void processPMS();
 void publishData();
 void publishGPS();
-void saveToSD();
 void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup);
 void performOTA();
 void debugStatus();
@@ -82,8 +83,6 @@ void setup() {
   gpsSerial.begin(9600, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   pmsSerial.begin(9600, SERIAL_8N1, PMS_RX_PIN, PMS_TX_PIN);
   dht.begin();
-  Wire.begin(I2C_SDA, I2C_SCL);
-  rtc.begin();
 
   // Get MAC immediately for ID
   uint8_t mac[6];
@@ -92,28 +91,14 @@ void setup() {
 
   // WiFi & MQTT Setup
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false);
+  startWiFiAttempt(false);
   setupMQTT();
 
-  // SD Card setup
-  if (!SD.begin(SD_CS_PIN)) {
-    Serial.println("❌ SD Card Fail");
-  } else {
-    if (!SD.exists(logFilename)) {
-      File f = SD.open(logFilename, FILE_WRITE);
-      f.println("Timestamp,Lat,Lon,PM25,PM10,Temp,Hum");
-      f.close();
-    }
-    Serial.println("💾 SD Card Ready");
-  }
-
-  // Local Web Server for log access
+  // Local Web Server for basic device presence checks
   server.on("/", [](){ server.send(200, "text/plain", "SUT SmartBus PM Module"); });
-  server.on("/download", [](){
-    File file = SD.open(logFilename);
-    if (file) { server.streamFile(file, "text/csv"); file.close(); }
-    else server.send(404, "text/plain", "No Log");
-  });
   server.begin();
   MDNS.begin(WEB_NAME);
 
@@ -160,23 +145,66 @@ void loop() {
     lastGpsPublish = millis();
     publishGPS();
   }
-
-  // 30 Second Task: SD Backup
-  if (millis() - last30s >= INTERVAL_30S) {
-    last30s = millis();
-    saveToSD();
-  }
 }
 
 void handleWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
     if (!wifiConnected) {
       wifiConnected = true;
       Serial.println("✅ WiFi Connected: " + WiFi.localIP().toString());
     }
-  } else {
-    wifiConnected = false;
+    return;
   }
+
+  if (wifiConnected) {
+    wifiConnected = false;
+    mqttConnectAttempted = false;
+    Serial.printf("WiFi disconnected status=%d\n", status);
+  }
+
+  if (millis() - lastWifiRetry >= WIFI_RETRY_INTERVAL_MS) {
+    startWiFiAttempt(true);
+  }
+}
+
+const char* currentWifiSsid() {
+  if (wifiNetworkIndex == 1 && strlen(WIFI_FALLBACK_1_SSID) > 0) {
+    return WIFI_FALLBACK_1_SSID;
+  }
+  return WIFI_SSID;
+}
+
+const char* currentWifiPassword() {
+  if (wifiNetworkIndex == 1 && strlen(WIFI_FALLBACK_1_SSID) > 0) {
+    return WIFI_FALLBACK_1_PASSWORD;
+  }
+  return WIFI_PASSWORD;
+}
+
+void startWiFiAttempt(bool rotateNetwork) {
+  if (rotateNetwork && strlen(WIFI_FALLBACK_1_SSID) > 0) {
+    wifiNetworkIndex = (wifiNetworkIndex + 1) % 2;
+  } else if (strlen(WIFI_FALLBACK_1_SSID) == 0) {
+    wifiNetworkIndex = 0;
+  }
+
+  lastWifiRetry = millis();
+  mqttConnectAttempted = false;
+  const char* ssid = currentWifiSsid();
+
+  if (PM_DEBUG_MODE) {
+    Serial.printf(
+      "[DEBUG] WiFi %s ssid=%s index=%u status=%d\n",
+      rotateNetwork ? "retry" : "begin",
+      ssid,
+      wifiNetworkIndex,
+      WiFi.status()
+    );
+  }
+
+  WiFi.disconnect(false, false);
+  WiFi.begin(ssid, currentWifiPassword());
 }
 
 void reconnectMQTT() {
@@ -386,17 +414,6 @@ void publishGPS() {
     Serial.printf("[DEBUG] Publish fast topic=%s payload=%s\n", MQTT_TOPIC_FAST, buffer);
   }
   mqttClient.publish(MQTT_TOPIC_FAST, 1, false, buffer);
-}
-
-void saveToSD() {
-  if (!SD.begin(SD_CS_PIN)) return;
-  File file = SD.open(logFilename, FILE_APPEND);
-  if (file) {
-    DateTime now = rtc.now();
-    file.printf("%04d-%02d-%02d %02d:%02d:%02d,", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
-    file.printf("%.6f,%.6f,%d,%d,%.1f,%.1f\n", gps.location.lat(), gps.location.lng(), pm25, pm10, tempC, humid);
-    file.close();
-  }
 }
 
 void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
