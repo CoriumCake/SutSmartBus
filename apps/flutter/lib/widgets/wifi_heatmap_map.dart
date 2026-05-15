@@ -1,20 +1,19 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+
 import '../models/bus.dart';
 import '../providers/data_provider.dart';
 import '../providers/theme_provider.dart';
-import '../utils/air_quality_utils.dart';
 
-class AirQualityMapWidget extends ConsumerStatefulWidget {
+class WifiHeatmapMapWidget extends ConsumerStatefulWidget {
   final List<Bus> buses;
   final String timeRange;
   final ValueChanged<String> onTimeRangeChanged;
   final bool keepControlsInSafeArea;
 
-  const AirQualityMapWidget({
+  const WifiHeatmapMapWidget({
     super.key,
     required this.buses,
     required this.timeRange,
@@ -23,18 +22,18 @@ class AirQualityMapWidget extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<AirQualityMapWidget> createState() =>
-      _AirQualityMapWidgetState();
+  ConsumerState<WifiHeatmapMapWidget> createState() =>
+      _WifiHeatmapMapWidgetState();
 }
 
-class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
+class _WifiHeatmapMapWidgetState extends ConsumerState<WifiHeatmapMapWidget> {
   final MapController _mapController = MapController();
   List<Polygon> _polygons = [];
   List<Map<String, dynamic>> _rawHeatmapData = [];
   bool _loading = false;
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
-  static const _gridSize = 0.001; // ~111m
+  static const _gridSize = 0.001;
 
   @override
   void initState() {
@@ -43,7 +42,7 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
   }
 
   @override
-  void didUpdateWidget(AirQualityMapWidget oldWidget) {
+  void didUpdateWidget(WifiHeatmapMapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.timeRange != widget.timeRange) {
       _fetchHeatmapData();
@@ -56,11 +55,12 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
     setState(() => _loading = true);
     try {
       final api = ref.read(apiServiceProvider);
-      final rawData = await api.fetchHeatmapData(timeRange: widget.timeRange);
+      final rawData =
+          await api.fetchWifiHeatmapData(timeRange: widget.timeRange);
       _rawHeatmapData = rawData;
       _buildHeatmap(rawData);
     } catch (e) {
-      // ignore
+      // Keep the map usable even if history is unavailable.
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -72,16 +72,32 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
         .map(
           (bus) => Marker(
             point: LatLng(bus.currentLat!, bus.currentLon!),
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             child: Tooltip(
-              message: bus.busName,
-              child: Opacity(
-                opacity: bus.isOffline ? 0.6 : 1.0,
-                child: Image.asset(
-                  'assets/images/bus_icon.png',
-                  fit: BoxFit.contain,
-                ),
+              message:
+                  '${bus.busName}\nWiFi: ${_wifiLabel(bus.rssi, bus.isOffline)}',
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: _wifiColor(bus.rssi, bus.isOffline),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.directions_bus,
+                      size: 21, color: Colors.white),
+                ],
               ),
             ),
           ),
@@ -90,33 +106,35 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
   }
 
   void _buildHeatmap(List<Map<String, dynamic>> rawData) {
-    // Snap to grid
-    final grid = <String, List<double>>{};
+    final grid = <String, List<int>>{};
 
     double snap(double val) => (val / _gridSize).round() * _gridSize;
 
-    void addPoint(double lat, double lon, double pm25) {
+    void addPoint(double lat, double lon, int rssi) {
       final key = '${snap(lat)},${snap(lon)}';
-      grid.putIfAbsent(key, () => []).add(pm25);
+      grid.putIfAbsent(key, () => []).add(rssi);
     }
 
-    // Add API data
     for (final point in rawData) {
-      final lat = point['latitude'] as double? ?? point['lat'] as double?;
-      final lon = point['longitude'] as double? ?? point['lon'] as double?;
-      final pm25 = point['weight'] as double? ?? point['pm2_5'] as double?;
-      if (lat != null && lon != null && pm25 != null) {
-        addPoint(lat, lon, pm25);
+      final lat = (point['latitude'] as num?)?.toDouble() ??
+          (point['lat'] as num?)?.toDouble();
+      final lon = (point['longitude'] as num?)?.toDouble() ??
+          (point['lon'] as num?)?.toDouble();
+      final rssi = (point['rssi'] as num?)?.toInt();
+      if (lat != null && lon != null && rssi != null) {
+        addPoint(lat, lon, rssi);
       }
     }
 
-    // Add live bus data
     for (final bus in widget.buses) {
-      if (bus.currentLat != null &&
-          bus.currentLon != null &&
-          bus.pm25 != null) {
-        addPoint(bus.currentLat!, bus.currentLon!, bus.pm25!);
+      if (bus.currentLat == null || bus.currentLon == null) {
+        continue;
       }
+      addPoint(
+        bus.currentLat!,
+        bus.currentLon!,
+        bus.isOffline ? -100 : (bus.rssi ?? -100),
+      );
     }
 
     final newPolygons = <Polygon>[];
@@ -125,9 +143,7 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
       final parts = key.split(',');
       final lat = double.parse(parts[0]);
       final lon = double.parse(parts[1]);
-      final avgPm25 = values.reduce((a, b) => a + b) / values.length;
-
-      final color = getPMColor(avgPm25).withValues(alpha: 0.5);
+      final avgRssi = values.reduce((a, b) => a + b) / values.length;
 
       newPolygons.add(
         Polygon(
@@ -137,13 +153,35 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
             LatLng(lat + _gridSize / 2, lon + _gridSize / 2),
             LatLng(lat - _gridSize / 2, lon + _gridSize / 2),
           ],
-          color: color,
+          color: _wifiColor(avgRssi.round(), false).withValues(alpha: 0.55),
           borderStrokeWidth: 0,
         ),
       );
     });
 
-    setState(() => _polygons = newPolygons);
+    if (mounted) {
+      setState(() => _polygons = newPolygons);
+    }
+  }
+
+  Color _wifiColor(int? rssi, bool isOffline) {
+    if (isOffline || rssi == null || rssi <= -90) {
+      return Colors.red;
+    }
+    if (rssi >= -70) {
+      return Colors.green;
+    }
+    return Colors.orange;
+  }
+
+  String _wifiLabel(int? rssi, bool isOffline) {
+    if (isOffline || rssi == null || rssi <= -90) {
+      return 'No connection';
+    }
+    if (rssi >= -70) {
+      return 'Good ($rssi dBm)';
+    }
+    return 'Weak ($rssi dBm)';
   }
 
   @override
@@ -172,8 +210,6 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
             MarkerLayer(markers: _buildBusMarkers()),
           ],
         ),
-
-        // Modern filter selector
         Positioned(
           top: topControlInset + 16,
           right: 16,
@@ -184,9 +220,10 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
               borderRadius: BorderRadius.circular(32),
               boxShadow: [
                 BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4)),
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
               ],
             ),
             child: Row(
@@ -198,7 +235,11 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
             ),
           ),
         ),
-
+        Positioned(
+          left: 16,
+          bottom: 16,
+          child: _WifiLegend(),
+        ),
         if (_loading)
           const Center(
             child: CircularProgressIndicator(),
@@ -229,6 +270,62 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WifiLegend extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.cardColor.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _LegendItem(color: Colors.green, label: 'Good'),
+          SizedBox(height: 6),
+          _LegendItem(color: Colors.orange, label: 'Weak'),
+          SizedBox(height: 6),
+          _LegendItem(color: Colors.red, label: 'No WiFi'),
+        ],
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  final Color color;
+  final String label;
+
+  const _LegendItem({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }

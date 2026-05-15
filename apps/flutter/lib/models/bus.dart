@@ -106,7 +106,7 @@ class Bus {
       pm10: (json['pm10'] as num?)?.toDouble(),
       temp: (json['temp'] as num?)?.toDouble(),
       hum: (json['hum'] as num?)?.toDouble(),
-      rssi: json['rssi'] as int?,
+      rssi: (json['rssi'] as num?)?.toInt(),
       lastUpdated: timeVal,
       routeId: json['route_id']?.toString(),
       personCount: _normalizePassengerCount(json['person_count']),

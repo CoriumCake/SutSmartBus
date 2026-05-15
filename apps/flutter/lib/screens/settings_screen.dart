@@ -72,6 +72,15 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           // ─── Debug Mode ─────────────────────────
+          _sectionCard(
+            theme,
+            icon: Icons.wifi_tethering,
+            title: 'SUT-IoT WiFi Heatmap',
+            subtitle: 'Test route coverage from bus RSSI readings',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push('/wifi-heatmap'),
+          ),
+
           if (debugState.isDevMachine) ...[
             _sectionCard(
               theme,
@@ -84,6 +93,19 @@ class SettingsScreen extends ConsumerWidget {
                 activeThumbColor: Colors.red,
               ),
             ),
+            if (debugState.debugMode)
+              _sectionCard(
+                theme,
+                icon: Icons.shuffle_rounded,
+                title: 'Random bus sensor values',
+                subtitle: 'PM2.5, PM10, temperature, and humidity',
+                trailing: Switch(
+                  value: debugState.randomTelemetryEnabled,
+                  onChanged: (_) =>
+                      ref.read(debugProvider.notifier).toggleRandomTelemetry(),
+                  activeThumbColor: Colors.orange,
+                ),
+              ),
             _sectionCard(
               theme,
               icon: Icons.build,
@@ -176,6 +198,7 @@ class SettingsScreen extends ConsumerWidget {
     ThemeData theme, {
     required IconData icon,
     required String title,
+    String? subtitle,
     Widget? trailing,
     VoidCallback? onTap,
   }) {
@@ -185,6 +208,7 @@ class SettingsScreen extends ConsumerWidget {
       child: ListTile(
         leading: Icon(icon, color: theme.colorScheme.primary),
         title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle),
         trailing: trailing,
         onTap: onTap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

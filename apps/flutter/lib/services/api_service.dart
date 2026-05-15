@@ -265,6 +265,27 @@ class ApiService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> fetchWifiHeatmapData(
+      {String timeRange = '1h'}) async {
+    try {
+      int hours = 1;
+      if (timeRange.endsWith('h')) {
+        hours = int.tryParse(timeRange.replaceAll('h', '')) ?? 1;
+      } else if (timeRange.endsWith('d')) {
+        hours = (int.tryParse(timeRange.replaceAll('d', '')) ?? 1) * 24;
+      }
+
+      final response = await _dio.get('/api/analytics/wifi-heatmap',
+          queryParameters: {'hours': hours});
+      if (response.data is List) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
   Future<void> sendFakeLocation(Map<String, dynamic> data) async {
     try {
       await _dio.post('/api/debug/location', data: data);

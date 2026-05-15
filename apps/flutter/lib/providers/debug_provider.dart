@@ -1,17 +1,21 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
+import 'data_provider.dart';
 // import '../config/allowed_devices.dart';
 
 class DebugState {
   final bool debugMode;
+  final bool randomTelemetryEnabled;
   final bool isDevMachine;
   final String? deviceId;
   final int apiCallCount;
 
   DebugState({
     this.debugMode = false,
+    this.randomTelemetryEnabled = false,
     this.isDevMachine = false,
     this.deviceId,
     this.apiCallCount = 0,
@@ -19,11 +23,14 @@ class DebugState {
 
   DebugState copyWith(
       {bool? debugMode,
+      bool? randomTelemetryEnabled,
       bool? isDevMachine,
       String? deviceId,
       int? apiCallCount}) {
     return DebugState(
       debugMode: debugMode ?? this.debugMode,
+      randomTelemetryEnabled:
+          randomTelemetryEnabled ?? this.randomTelemetryEnabled,
       isDevMachine: isDevMachine ?? this.isDevMachine,
       deviceId: deviceId ?? this.deviceId,
       apiCallCount: apiCallCount ?? this.apiCallCount,
@@ -32,7 +39,10 @@ class DebugState {
 }
 
 class DebugNotifier extends StateNotifier<DebugState> {
-  DebugNotifier() : super(DebugState()) {
+  final Ref _ref;
+  Timer? _telemetryTimer;
+
+  DebugNotifier(this._ref) : super(DebugState()) {
     _checkDevice();
   }
 
@@ -61,15 +71,60 @@ class DebugNotifier extends StateNotifier<DebugState> {
 
   void toggleDebug() {
     if (state.isDevMachine) {
-      state = state.copyWith(debugMode: !state.debugMode);
+      final enabled = !state.debugMode;
+      if (!enabled) {
+        _stopRandomTelemetry();
+      }
+      state = state.copyWith(
+        debugMode: enabled,
+        randomTelemetryEnabled: enabled ? state.randomTelemetryEnabled : false,
+      );
     }
+  }
+
+  void toggleRandomTelemetry() {
+    if (!state.isDevMachine || !state.debugMode) {
+      return;
+    }
+
+    if (state.randomTelemetryEnabled) {
+      _stopRandomTelemetry();
+      state = state.copyWith(randomTelemetryEnabled: false);
+    } else {
+      state = state.copyWith(randomTelemetryEnabled: true);
+      _startRandomTelemetry();
+    }
+  }
+
+  void _startRandomTelemetry() {
+    _telemetryTimer?.cancel();
+    _randomizeTelemetry();
+    _telemetryTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _randomizeTelemetry(),
+    );
+  }
+
+  void _stopRandomTelemetry() {
+    _telemetryTimer?.cancel();
+    _telemetryTimer = null;
+  }
+
+  void _randomizeTelemetry() {
+    _ref.read(dataProvider.notifier).randomizeOnlineBusTelemetry();
   }
 
   void incrementApiCount() {
     state = state.copyWith(apiCallCount: state.apiCallCount + 1);
   }
+
+  @override
+  void dispose() {
+    _stopRandomTelemetry();
+    super.dispose();
+  }
 }
 
 final debugProvider = StateNotifierProvider<DebugNotifier, DebugState>((ref) {
-  return DebugNotifier();
+  return DebugNotifier(ref);
 });

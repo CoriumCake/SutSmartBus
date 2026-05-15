@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     # Rate limiting (requests per minute)
     RATE_LIMIT_PER_MINUTE: int = 60
 
+    # Logging
+    LOG_LEVEL: str = "INFO"
+
     # OTA Settings
     OTA_FALLBACK_IP: str = "203.158.3.14"
     OTA_PUBLIC_BASE_URL: Optional[str] = None

@@ -4,6 +4,7 @@ import json
 import asyncio
 import time
 import sqlite3
+import logging
 from datetime import datetime, timezone
 from . import crud, models, constants, state
 from .passenger_rules import (
@@ -12,6 +13,14 @@ from .passenger_rules import (
     seats_available_for_count,
 )
 from core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _optional_float(payload: dict, key: str) -> float | None:
+    if key not in payload or payload.get(key) is None:
+        return None
+    return float(payload[key])
 
 
 def bus_document_to_app_payload(bus_doc: dict) -> dict:
@@ -205,7 +214,8 @@ def on_message(client, userdata, msg):
                         seats_available = seats_available_for_count(current_passengers)
                         updated_bus = await crud.update_bus_location(
                             mac_address=mac, lat=None, lon=None,
-                            seats_available=seats_available, pm2_5=0, pm10=0,
+                            seats_available=seats_available, pm2_5=None, pm10=None,
+                            temp=None, hum=None,
                             person_count=current_passengers
                         )
                         # Broadcast to App
@@ -242,11 +252,33 @@ def on_message(client, userdata, msg):
         bus_name = payload.get("bus_name", "").strip() or None
         lat = payload.get("lat")
         lon = payload.get("lon")
-        pm2_5 = float(payload.get("pm2_5", 0.0))
-        pm10 = float(payload.get("pm10", 0.0))
-        temp = float(payload.get("temp", 0.0))
-        hum = float(payload.get("hum", 0.0))
+        pm2_5 = _optional_float(payload, "pm2_5")
+        pm10 = _optional_float(payload, "pm10")
+        temp = _optional_float(payload, "temp")
+        hum = _optional_float(payload, "hum")
         seats_available = int(payload.get("seats_available", 0))
+        missing_sensor_fields = [
+            key
+            for key in ("pm2_5", "pm10", "temp", "hum")
+            if key not in payload or payload.get(key) is None
+        ]
+        if missing_sensor_fields:
+            logger.info(
+                "MQTT %s bus=%s missing sensor fields=%s; previous stored values will be preserved",
+                msg.topic,
+                bus_mac,
+                ",".join(missing_sensor_fields),
+            )
+        else:
+            logger.info(
+                "MQTT %s bus=%s sensors pm2_5=%s pm10=%s temp=%s hum=%s",
+                msg.topic,
+                bus_mac,
+                pm2_5,
+                pm10,
+                temp,
+                hum,
+            )
         
         person_count = payload.get("person_count")
         if person_count is None:
@@ -311,14 +343,23 @@ def on_message(client, userdata, msg):
                 # Create history entry
                 if lat is not None and lon is not None:
                     hw_loc = models.HardwareLocation(
-                        lat=lat, lon=lon, pm2_5=pm2_5, pm10=pm10, 
+                        lat=lat, lon=lon, pm2_5=pm2_5 or 0.0, pm10=pm10 or 0.0, 
+                        rssi=rssi,
                         timestamp=datetime.now(timezone.utc), bus_mac=resolved_mac
                     )
                     await crud.create_hardware_location(hw_loc)
                 
                 # Check zones
                 if lat is not None and lon is not None:
-                    await check_pm_zones_logic(resolved_mac, lat, lon, pm2_5, pm10, temp, hum)
+                    await check_pm_zones_logic(
+                        resolved_mac,
+                        lat,
+                        lon,
+                        pm2_5 or 0.0,
+                        pm10 or 0.0,
+                        temp or 0.0,
+                        hum or 0.0,
+                    )
 
                 return resolved_mac, resolved_name, updated_bus
 
@@ -346,6 +387,16 @@ def on_message(client, userdata, msg):
                     "person_count": person_count,
                     "rssi": rssi,
                 }
+                logger.debug(
+                    "Publishing app payload bus=%s pm2_5=%s pm10=%s temp=%s hum=%s lat=%s lon=%s",
+                    resolved_mac,
+                    pm2_5,
+                    pm10,
+                    temp,
+                    hum,
+                    lat,
+                    lon,
+                )
                 client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
 
     except Exception as e:

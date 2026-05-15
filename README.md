@@ -10,7 +10,6 @@ SutSmartBus/
 |   `-- flutter/      # Flutter client
 |-- server/           # FastAPI API, Docker config, scripts
 |-- hardware/         # ESP32 and sensor firmware
-|-- migrate/          # migration notes and architecture docs
 |-- docker-compose.yml
 `-- README.md
 ```
@@ -75,4 +74,3 @@ See [hardware/README.md](/C:/Users/maple/Documents/Coding/SutSmartBus/hardware/R
 - Use [server/.env.example](/C:/Users/maple/Documents/Coding/SutSmartBus/server/.env.example) and [.env.example](/C:/Users/maple/Documents/Coding/SutSmartBus/.env.example) as templates for local configuration.
 - The repo is already organized as a monorepo, so cleanup is mostly about keeping build artifacts and tool-specific files out of source control.
 - GitHub Actions can read the same keys through repository `Secrets` and `Variables`, especially `API_SECRET_KEY` and `ADMIN_PASSWORD`.
-- Production deployment can be automated with [migrate/14_github_deploy.md](/C:/Users/maple/Documents/Coding/SutSmartBus/migrate/14_github_deploy.md).

@@ -62,6 +62,7 @@ class HardwareLocation(MongoBaseModel):
     lon: float
     pm2_5: float = 0.0
     pm10: float = 0.0
+    rssi: Optional[int] = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     bus_mac: Optional[str] = "FAKE-PM-BUS"
 

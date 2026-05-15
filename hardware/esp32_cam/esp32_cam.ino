@@ -25,13 +25,13 @@ String otaVersion = "";
 bool IS_RIGHT_TO_LEFT_ENTER = false;
 
 // Detection Constants (Optimized)
-int MOTION_THRESHOLD = 30;      // Lower pixel-difference threshold for easier motion pickup
-int TRIGGER_THRESHOLD_L = 900;  // Left zone trigger threshold
-int TRIGGER_THRESHOLD_R = 700;  // Right zone is weaker, so trigger it sooner
+int MOTION_THRESHOLD = 24;      // Pick up softer per-pixel changes from partial crossings
+int TRIGGER_THRESHOLD_L = 700;  // Lower left trigger so weaker body motion still arms detection
+int TRIGGER_THRESHOLD_R = 500;  // Right zone remains easier to trigger than left
 int NOISE_THRESHOLD_BOTH = 1800; // Re-zero only when both zones are heavily disturbed
 int NOISE_THRESHOLD_TOTAL = 6200; // Whole-frame disturbance threshold
-int CLEAR_THRESHOLD_L = 250;    // Require both zones to fall well below trigger before re-arming
-int CLEAR_THRESHOLD_R = 250;
+int CLEAR_THRESHOLD_L = 180;    // Re-arm sooner after lighter motion tails off
+int CLEAR_THRESHOLD_R = 180;
 unsigned long CLEAR_HOLD_MS = 250; // Quiet period before the detector is ready again
 int ZONE_L = 60;                // Left line boundary (0-160)
 int ZONE_R = 100;               // Right line boundary (0-160)

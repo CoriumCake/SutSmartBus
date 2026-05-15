@@ -20,6 +20,8 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
   Widget build(BuildContext context) {
     final List<Bus> buses = ref.watch(busesProvider);
     final bool debugMode = ref.watch(debugProvider).debugMode;
+    final List<Bus> visibleBuses =
+        debugMode ? buses : buses.where((bus) => !bus.isDebugBus).toList();
     final ThemeData theme = Theme.of(context);
 
     return Scaffold(
@@ -31,24 +33,12 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
             child: Stack(
               children: [
                 AirQualityMapWidget(
-                  buses: buses,
+                  buses: visibleBuses,
                   timeRange: _timeRange,
+                  keepControlsInSafeArea: true,
                   onTimeRangeChanged: (String range) =>
                       setState(() => _timeRange = range),
                 ),
-                // Debug FAB
-                if (debugMode)
-                  Positioned(
-                    top: 60,
-                    left: 20,
-                    child: FloatingActionButton.small(
-                      backgroundColor: Colors.red,
-                      onPressed: () {
-                        // Toggle fake bus
-                      },
-                      child: const Icon(Icons.bug_report, color: Colors.white),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -78,10 +68,10 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                   ),
                   Expanded(
                     child: ListView.builder(
-                      itemCount: buses.length,
+                      itemCount: visibleBuses.length,
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       itemBuilder: (context, index) =>
-                          _buildAQCard(buses[index], theme),
+                          _buildAQCard(visibleBuses[index], theme),
                     ),
                   ),
                 ],
@@ -124,20 +114,6 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
                               color: Colors.grey,
                               borderRadius: BorderRadius.circular(15)),
                           child: const Text('OFFLINE',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold)),
-                        )
-                      else
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 5),
-                          margin: const EdgeInsets.only(right: 5),
-                          decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(15)),
-                          child: const Text('ONLINE',
                               style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,

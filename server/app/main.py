@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 import sqlite3
+import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,12 @@ from app.routers import (
 from app.mqtt import client as mqtt_client, connect_mqtt, start_mqtt_loop, stop_mqtt_loop
 from core.config import settings
 from core.auth import APIKeyMiddleware
+
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 def init_sqlite():
     """Ensure the local passenger counting database exists."""

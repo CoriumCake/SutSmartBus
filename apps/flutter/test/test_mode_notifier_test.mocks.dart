@@ -3,13 +3,11 @@
 // Do not manually edit this file.
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
-import 'dart:async' as _i4;
+import 'dart:async' as _i3;
 
-import 'package:flutter_riverpod/flutter_riverpod.dart' as _i5;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:state_notifier/state_notifier.dart' as _i6;
-import 'package:sut_smart_bus/providers/simulation_provider.dart' as _i2;
-import 'package:sut_smart_bus/services/mqtt_service.dart' as _i3;
+import 'package:mqtt_client/mqtt_client.dart' as _i4;
+import 'package:sut_smart_bus/services/mqtt_service.dart' as _i2;
 
 // ignore_for_file: type=lint
 // ignore_for_file: avoid_redundant_argument_values
@@ -24,27 +22,16 @@ import 'package:sut_smart_bus/services/mqtt_service.dart' as _i3;
 // ignore_for_file: camel_case_types
 // ignore_for_file: subtype_of_sealed_class
 
-class _FakeSimulationState_0 extends _i1.SmartFake
-    implements _i2.SimulationState {
-  _FakeSimulationState_0(
-    Object parent,
-    Invocation parentInvocation,
-  ) : super(
-          parent,
-          parentInvocation,
-        );
-}
-
 /// A class which mocks [MqttService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockMqttService extends _i1.Mock implements _i3.MqttService {
+class MockMqttService extends _i1.Mock implements _i2.MqttService {
   MockMqttService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  set onMessage(_i3.MqttMessageCallback? _onMessage) => super.noSuchMethod(
+  set onMessage(_i2.MqttMessageCallback? _onMessage) => super.noSuchMethod(
         Invocation.setter(
           #onMessage,
           _onMessage,
@@ -53,20 +40,32 @@ class MockMqttService extends _i1.Mock implements _i3.MqttService {
       );
 
   @override
+  _i3.Stream<_i4.MqttConnectionState> get statusStream => (super.noSuchMethod(
+        Invocation.getter(#statusStream),
+        returnValue: _i3.Stream<_i4.MqttConnectionState>.empty(),
+      ) as _i3.Stream<_i4.MqttConnectionState>);
+
+  @override
+  _i4.MqttConnectionState get currentState => (super.noSuchMethod(
+        Invocation.getter(#currentState),
+        returnValue: _i4.MqttConnectionState.disconnecting,
+      ) as _i4.MqttConnectionState);
+
+  @override
   bool get isCamCountSubscribed => (super.noSuchMethod(
         Invocation.getter(#isCamCountSubscribed),
         returnValue: false,
       ) as bool);
 
   @override
-  _i4.Future<void> connect() => (super.noSuchMethod(
+  _i3.Future<void> connect() => (super.noSuchMethod(
         Invocation.method(
           #connect,
           [],
         ),
-        returnValue: _i4.Future<void>.value(),
-        returnValueForMissingStub: _i4.Future<void>.value(),
-      ) as _i4.Future<void>);
+        returnValue: _i3.Future<void>.value(),
+        returnValueForMissingStub: _i3.Future<void>.value(),
+      ) as _i3.Future<void>);
 
   @override
   void disconnect() => super.noSuchMethod(
@@ -78,7 +77,7 @@ class MockMqttService extends _i1.Mock implements _i3.MqttService {
       );
 
   @override
-  void subscribeToCamCount(_i3.CamCountCallback? onCount) => super.noSuchMethod(
+  void subscribeToCamCount(_i2.CamCountCallback? onCount) => super.noSuchMethod(
         Invocation.method(
           #subscribeToCamCount,
           [onCount],
@@ -94,97 +93,6 @@ class MockMqttService extends _i1.Mock implements _i3.MqttService {
         ),
         returnValueForMissingStub: null,
       );
-}
-
-/// A class which mocks [SimulationNotifier].
-///
-/// See the documentation for Mockito's code generation for more information.
-class MockSimulationNotifier extends _i1.Mock
-    implements _i2.SimulationNotifier {
-  MockSimulationNotifier() {
-    _i1.throwOnMissingStub(this);
-  }
-
-  @override
-  set onError(_i5.ErrorListener? _onError) => super.noSuchMethod(
-        Invocation.setter(
-          #onError,
-          _onError,
-        ),
-        returnValueForMissingStub: null,
-      );
-
-  @override
-  bool get mounted => (super.noSuchMethod(
-        Invocation.getter(#mounted),
-        returnValue: false,
-      ) as bool);
-
-  @override
-  _i4.Stream<_i2.SimulationState> get stream => (super.noSuchMethod(
-        Invocation.getter(#stream),
-        returnValue: _i4.Stream<_i2.SimulationState>.empty(),
-      ) as _i4.Stream<_i2.SimulationState>);
-
-  @override
-  _i2.SimulationState get state => (super.noSuchMethod(
-        Invocation.getter(#state),
-        returnValue: _FakeSimulationState_0(
-          this,
-          Invocation.getter(#state),
-        ),
-      ) as _i2.SimulationState);
-
-  @override
-  set state(_i2.SimulationState? value) => super.noSuchMethod(
-        Invocation.setter(
-          #state,
-          value,
-        ),
-        returnValueForMissingStub: null,
-      );
-
-  @override
-  _i2.SimulationState get debugState => (super.noSuchMethod(
-        Invocation.getter(#debugState),
-        returnValue: _FakeSimulationState_0(
-          this,
-          Invocation.getter(#debugState),
-        ),
-      ) as _i2.SimulationState);
-
-  @override
-  bool get hasListeners => (super.noSuchMethod(
-        Invocation.getter(#hasListeners),
-        returnValue: false,
-      ) as bool);
-
-  @override
-  void setPersonCount(int? count) => super.noSuchMethod(
-        Invocation.method(
-          #setPersonCount,
-          [count],
-        ),
-        returnValueForMissingStub: null,
-      );
-
-  @override
-  void toggleSimulation(
-    bool? value, {
-    double? lat,
-    double? lon,
-  }) =>
-      super.noSuchMethod(
-        Invocation.method(
-          #toggleSimulation,
-          [value],
-          {
-            #lat: lat,
-            #lon: lon,
-          },
-        ),
-        returnValueForMissingStub: null,
-      );
 
   @override
   void dispose() => super.noSuchMethod(
@@ -194,34 +102,4 @@ class MockSimulationNotifier extends _i1.Mock
         ),
         returnValueForMissingStub: null,
       );
-
-  @override
-  bool updateShouldNotify(
-    _i2.SimulationState? old,
-    _i2.SimulationState? current,
-  ) =>
-      (super.noSuchMethod(
-        Invocation.method(
-          #updateShouldNotify,
-          [
-            old,
-            current,
-          ],
-        ),
-        returnValue: false,
-      ) as bool);
-
-  @override
-  _i5.RemoveListener addListener(
-    _i6.Listener<_i2.SimulationState>? listener, {
-    bool? fireImmediately = true,
-  }) =>
-      (super.noSuchMethod(
-        Invocation.method(
-          #addListener,
-          [listener],
-          {#fireImmediately: fireImmediately},
-        ),
-        returnValue: () {},
-      ) as _i5.RemoveListener);
 }

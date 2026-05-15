@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
 import '../providers/data_provider.dart';
+import '../providers/debug_provider.dart';
 import '../providers/language_provider.dart';
 import '../utils/route_helpers.dart';
 import '../widgets/bus_card.dart';
@@ -86,9 +87,12 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
     final routes = ref.watch(routesProvider);
+    final debugMode = ref.watch(debugProvider).debugMode;
     final theme = Theme.of(context);
     final t = ref.watch(languageProvider).t;
-    final busCards = buses
+    final visibleBuses =
+        debugMode ? buses : buses.where((bus) => !bus.isDebugBus).toList();
+    final busCards = visibleBuses
         .map((bus) => (bus: bus, routeInfo: _routeInfoForBus(bus, routes)))
         .where((entry) => _matchesSearch(entry.bus, entry.routeInfo))
         .toList();
@@ -142,7 +146,7 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
             ),
           ),
           Expanded(
-            child: buses.isEmpty
+            child: visibleBuses.isEmpty
                 ? _buildEmptyState(theme)
                 : busCards.isEmpty
                     ? _buildNoSearchResults(theme)

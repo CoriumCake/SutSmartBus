@@ -18,6 +18,7 @@ import 'screens/splash_screen.dart';
 import 'screens/legal_consent_screen.dart';
 import 'screens/legal_document_screen.dart';
 import 'screens/passenger_stats_screen.dart';
+import 'screens/wifi_heatmap_screen.dart';
 import 'legal/legal_documents.dart';
 
 // Navigation keys for each tab branch
@@ -130,6 +131,12 @@ final goRouter = GoRouter(
       name: 'passengerStats',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const PassengerStatsScreen(),
+    ),
+    GoRoute(
+      path: '/wifi-heatmap',
+      name: 'wifiHeatmap',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const WifiHeatmapScreen(),
     ),
   ],
 );

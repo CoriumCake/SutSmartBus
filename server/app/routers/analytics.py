@@ -12,6 +12,11 @@ async def get_heatmap(limit: int = 1000, hours: int = Query(24, description="Get
     start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     return await crud.get_heatmap_data(limit=limit, start_time=start_time)
 
+@router.get("/wifi-heatmap")
+async def get_wifi_heatmap(limit: int = 1000, hours: int = Query(24, description="Get Wi-Fi RSSI data from last X hours")):
+    start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+    return await crud.get_wifi_heatmap_data(limit=limit, start_time=start_time)
+
 @router.get("/pm-grid")
 async def get_pm_grid(limit: int = 5000, hours: int = Query(24, description="Get data from last X hours")):
     start_time = datetime.now(timezone.utc) - timedelta(hours=hours)

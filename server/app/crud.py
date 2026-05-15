@@ -2,6 +2,7 @@ from typing import List
 from bson import ObjectId
 from . import models, schemas
 from datetime import datetime, timezone
+import logging
 from .database import db
 from .passenger_rules import (
     is_at_default_parking,
@@ -9,6 +10,8 @@ from .passenger_rules import (
     seats_available_for_count,
 )
 from core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Get collections
 bus_collection = db.get_collection("buses")
@@ -61,8 +64,43 @@ async def get_bus_by_name(bus_name: str):
 
 async def get_buses(skip: int = 0, limit: int = 100):
     buses = await bus_collection.find().skip(skip).limit(limit).to_list(limit)
-    print(f"DEBUG: get_buses returning {len(buses)} buses")
-    return [_serialize_mongo_document(bus) for bus in buses]
+    serialized = [_serialize_mongo_document(bus) for bus in buses]
+    missing_sensor_count = sum(
+        1
+        for bus in serialized
+        if bus.get("pm2_5") is None
+        or bus.get("pm10") is None
+        or bus.get("temp") is None
+        or bus.get("hum") is None
+    )
+    zero_sensor_count = sum(
+        1
+        for bus in serialized
+        if bus.get("pm2_5") == 0
+        and bus.get("pm10") == 0
+        and bus.get("temp") == 0
+        and bus.get("hum") == 0
+    )
+    logger.info(
+        "GET /api/buses returning %s buses; missing_sensor_fields=%s zero_sensor_sets=%s",
+        len(serialized),
+        missing_sensor_count,
+        zero_sensor_count,
+    )
+    for bus in serialized:
+        logger.debug(
+            "GET /api/buses bus=%s name=%s lat=%s lon=%s pm2_5=%s pm10=%s temp=%s hum=%s updated=%s",
+            bus.get("mac_address"),
+            bus.get("bus_name"),
+            bus.get("current_lat"),
+            bus.get("current_lon"),
+            bus.get("pm2_5"),
+            bus.get("pm10"),
+            bus.get("temp"),
+            bus.get("hum"),
+            bus.get("last_updated"),
+        )
+    return serialized
 
 async def create_bus(bus: models.Bus):
     bus_dict = bus.model_dump(by_alias=True, exclude=["id"])
@@ -70,18 +108,51 @@ async def create_bus(bus: models.Bus):
     new_bus = await bus_collection.find_one({"_id": result.inserted_id})
     return _serialize_mongo_document(new_bus)
 
-async def update_bus_location(mac_address: str, lat: float | None, lon: float | None, seats_available: int, pm2_5: float, pm10: float, bus_name: str = None, temp: float = 0.0, hum: float = 0.0, person_count: int = None, rssi: int = None):
+async def update_bus_location(
+    mac_address: str,
+    lat: float | None,
+    lon: float | None,
+    seats_available: int,
+    pm2_5: float | None = None,
+    pm10: float | None = None,
+    bus_name: str = None,
+    temp: float | None = None,
+    hum: float | None = None,
+    person_count: int = None,
+    rssi: int = None,
+):
     # This is an 'upsert' operation: it updates a bus if it exists, or creates it if it doesn't.
     # This is useful for when a bus device comes online for the first time.
     existing_bus = await get_bus_by_mac(mac_address)
 
     update_data = {
+        "last_updated": datetime.now(timezone.utc)
+    }
+
+    sensor_update = {
         "pm2_5": pm2_5,
         "pm10": pm10,
         "temp": temp,
         "hum": hum,
-        "last_updated": datetime.now(timezone.utc)
     }
+    for field, value in sensor_update.items():
+        if value is not None:
+            update_data[field] = value
+
+    if all(value is None for value in sensor_update.values()):
+        logger.debug(
+            "Bus %s update has no sensor values; preserving previous PM/temp/hum fields",
+            mac_address,
+        )
+    else:
+        logger.info(
+            "Bus %s sensor update pm2_5=%s pm10=%s temp=%s hum=%s",
+            mac_address,
+            pm2_5,
+            pm10,
+            temp,
+            hum,
+        )
     
     if rssi is not None:
         update_data["rssi"] = rssi
@@ -133,9 +204,27 @@ async def update_bus_location(mac_address: str, lat: float | None, lon: float | 
         {"$set": update_data},
         upsert=True
     )
-    print(f"DEBUG: update_bus_location result matched={result.matched_count}, upserted={result.upserted_id}, modified={result.modified_count}")
+    logger.info(
+        "update_bus_location bus=%s matched=%s upserted=%s modified=%s fields=%s",
+        mac_address,
+        result.matched_count,
+        result.upserted_id,
+        result.modified_count,
+        sorted(update_data.keys()),
+    )
     if result.matched_count == 1 or result.upserted_id:
-        return await get_bus_by_mac(mac_address)
+        updated_bus = await get_bus_by_mac(mac_address)
+        logger.debug(
+            "Stored bus=%s pm2_5=%s pm10=%s temp=%s hum=%s lat=%s lon=%s",
+            mac_address,
+            updated_bus.get("pm2_5") if updated_bus else None,
+            updated_bus.get("pm10") if updated_bus else None,
+            updated_bus.get("temp") if updated_bus else None,
+            updated_bus.get("hum") if updated_bus else None,
+            updated_bus.get("current_lat") if updated_bus else None,
+            updated_bus.get("current_lon") if updated_bus else None,
+        )
+        return updated_bus
     return None
 
 async def delete_bus(mac_address: str):
@@ -207,6 +296,15 @@ async def create_hardware_location(location: models.HardwareLocation):
     location_dict = location.model_dump(by_alias=True, exclude=["id"])
     result = await hardware_location_collection.insert_one(location_dict)
     new_location = await hardware_location_collection.find_one({"_id": result.inserted_id})
+    logger.debug(
+        "Created hardware_location bus=%s lat=%s lon=%s pm2_5=%s pm10=%s rssi=%s",
+        location_dict.get("bus_mac"),
+        location_dict.get("lat"),
+        location_dict.get("lon"),
+        location_dict.get("pm2_5"),
+        location_dict.get("pm10"),
+        location_dict.get("rssi"),
+    )
     return new_location
 
 async def get_hardware_locations(skip: int = 0, limit: int = 100):
@@ -243,6 +341,25 @@ async def get_heatmap_data(limit: int = 2000, start_time: datetime = None):
             "latitude": doc["lat"],
             "longitude": doc["lon"],
             "weight": doc["pm2_5"]
+        })
+    return points
+
+async def get_wifi_heatmap_data(limit: int = 2000, start_time: datetime = None):
+    # Fetch recent hardware locations with Wi-Fi RSSI for connection testing.
+    query = {"lat": {"$ne": None}, "lon": {"$ne": None}, "rssi": {"$ne": None}}
+
+    if start_time:
+        query["timestamp"] = {"$gte": start_time}
+
+    cursor = hardware_location_collection.find(query).sort("timestamp", -1).limit(limit)
+
+    points = []
+    async for doc in cursor:
+        points.append({
+            "latitude": doc["lat"],
+            "longitude": doc["lon"],
+            "rssi": doc["rssi"],
+            "bus_mac": doc.get("bus_mac"),
         })
     return points
 

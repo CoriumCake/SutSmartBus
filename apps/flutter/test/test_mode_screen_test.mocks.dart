@@ -5,13 +5,14 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'dart:async' as _i4;
 
-import 'package:flutter_riverpod/flutter_riverpod.dart' as _i8;
+import 'package:flutter_riverpod/flutter_riverpod.dart' as _i9;
 import 'package:mockito/mockito.dart' as _i1;
-import 'package:state_notifier/state_notifier.dart' as _i9;
-import 'package:sut_smart_bus/models/bus.dart' as _i6;
-import 'package:sut_smart_bus/models/route_model.dart' as _i7;
+import 'package:mqtt_client/mqtt_client.dart' as _i5;
+import 'package:state_notifier/state_notifier.dart' as _i10;
+import 'package:sut_smart_bus/models/bus.dart' as _i7;
+import 'package:sut_smart_bus/models/route_model.dart' as _i8;
 import 'package:sut_smart_bus/providers/data_provider.dart' as _i2;
-import 'package:sut_smart_bus/services/api_service.dart' as _i5;
+import 'package:sut_smart_bus/services/api_service.dart' as _i6;
 import 'package:sut_smart_bus/services/mqtt_service.dart' as _i3;
 
 // ignore_for_file: type=lint
@@ -55,6 +56,18 @@ class MockMqttService extends _i1.Mock implements _i3.MqttService {
       );
 
   @override
+  _i4.Stream<_i5.MqttConnectionState> get statusStream => (super.noSuchMethod(
+        Invocation.getter(#statusStream),
+        returnValue: _i4.Stream<_i5.MqttConnectionState>.empty(),
+      ) as _i4.Stream<_i5.MqttConnectionState>);
+
+  @override
+  _i5.MqttConnectionState get currentState => (super.noSuchMethod(
+        Invocation.getter(#currentState),
+        returnValue: _i5.MqttConnectionState.disconnecting,
+      ) as _i5.MqttConnectionState);
+
+  @override
   bool get isCamCountSubscribed => (super.noSuchMethod(
         Invocation.getter(#isCamCountSubscribed),
         returnValue: false,
@@ -96,24 +109,33 @@ class MockMqttService extends _i1.Mock implements _i3.MqttService {
         ),
         returnValueForMissingStub: null,
       );
+
+  @override
+  void dispose() => super.noSuchMethod(
+        Invocation.method(
+          #dispose,
+          [],
+        ),
+        returnValueForMissingStub: null,
+      );
 }
 
 /// A class which mocks [ApiService].
 ///
 /// See the documentation for Mockito's code generation for more information.
-class MockApiService extends _i1.Mock implements _i5.ApiService {
+class MockApiService extends _i1.Mock implements _i6.ApiService {
   MockApiService() {
     _i1.throwOnMissingStub(this);
   }
 
   @override
-  _i4.Future<List<_i6.Bus>> fetchBuses() => (super.noSuchMethod(
+  _i4.Future<List<_i7.Bus>> fetchBuses() => (super.noSuchMethod(
         Invocation.method(
           #fetchBuses,
           [],
         ),
-        returnValue: _i4.Future<List<_i6.Bus>>.value(<_i6.Bus>[]),
-      ) as _i4.Future<List<_i6.Bus>>);
+        returnValue: _i4.Future<List<_i7.Bus>>.value(<_i7.Bus>[]),
+      ) as _i4.Future<List<_i7.Bus>>);
 
   @override
   _i4.Future<int?> fetchPassengerCount() => (super.noSuchMethod(
@@ -125,13 +147,38 @@ class MockApiService extends _i1.Mock implements _i5.ApiService {
       ) as _i4.Future<int?>);
 
   @override
-  _i4.Future<List<_i7.BusRoute>> fetchRoutes() => (super.noSuchMethod(
+  _i4.Future<List<Map<String, dynamic>>> fetchPassengerCountHistory(
+          {int? hours = 24}) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #fetchPassengerCountHistory,
+          [],
+          {#hours: hours},
+        ),
+        returnValue: _i4.Future<List<Map<String, dynamic>>>.value(
+            <Map<String, dynamic>>[]),
+      ) as _i4.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i4.Future<Map<String, dynamic>?> fetchPassengerStats(
+          {String? period = r'daily'}) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #fetchPassengerStats,
+          [],
+          {#period: period},
+        ),
+        returnValue: _i4.Future<Map<String, dynamic>?>.value(),
+      ) as _i4.Future<Map<String, dynamic>?>);
+
+  @override
+  _i4.Future<List<_i8.BusRoute>> fetchRoutes() => (super.noSuchMethod(
         Invocation.method(
           #fetchRoutes,
           [],
         ),
-        returnValue: _i4.Future<List<_i7.BusRoute>>.value(<_i7.BusRoute>[]),
-      ) as _i4.Future<List<_i7.BusRoute>>);
+        returnValue: _i4.Future<List<_i8.BusRoute>>.value(<_i8.BusRoute>[]),
+      ) as _i4.Future<List<_i8.BusRoute>>);
 
   @override
   _i4.Future<List<Map<String, dynamic>>> fetchRouteList() =>
@@ -145,16 +192,16 @@ class MockApiService extends _i1.Mock implements _i5.ApiService {
       ) as _i4.Future<List<Map<String, dynamic>>>);
 
   @override
-  _i4.Future<_i7.BusRoute?> fetchRoute(String? routeId) => (super.noSuchMethod(
+  _i4.Future<_i8.BusRoute?> fetchRoute(String? routeId) => (super.noSuchMethod(
         Invocation.method(
           #fetchRoute,
           [routeId],
         ),
-        returnValue: _i4.Future<_i7.BusRoute?>.value(),
-      ) as _i4.Future<_i7.BusRoute?>);
+        returnValue: _i4.Future<_i8.BusRoute?>.value(),
+      ) as _i4.Future<_i8.BusRoute?>);
 
   @override
-  _i4.Future<bool> syncRoute(_i7.BusRoute? route) => (super.noSuchMethod(
+  _i4.Future<bool> syncRoute(_i8.BusRoute? route) => (super.noSuchMethod(
         Invocation.method(
           #syncRoute,
           [route],
@@ -228,6 +275,19 @@ class MockApiService extends _i1.Mock implements _i5.ApiService {
       (super.noSuchMethod(
         Invocation.method(
           #fetchHeatmapData,
+          [],
+          {#timeRange: timeRange},
+        ),
+        returnValue: _i4.Future<List<Map<String, dynamic>>>.value(
+            <Map<String, dynamic>>[]),
+      ) as _i4.Future<List<Map<String, dynamic>>>);
+
+  @override
+  _i4.Future<List<Map<String, dynamic>>> fetchWifiHeatmapData(
+          {String? timeRange = r'1h'}) =>
+      (super.noSuchMethod(
+        Invocation.method(
+          #fetchWifiHeatmapData,
           [],
           {#timeRange: timeRange},
         ),
@@ -345,7 +405,7 @@ class MockDataNotifier extends _i1.Mock implements _i2.DataNotifier {
   }
 
   @override
-  set onError(_i8.ErrorListener? _onError) => super.noSuchMethod(
+  set onError(_i9.ErrorListener? _onError) => super.noSuchMethod(
         Invocation.setter(
           #onError,
           _onError,
@@ -425,6 +485,33 @@ class MockDataNotifier extends _i1.Mock implements _i2.DataNotifier {
       );
 
   @override
+  void updateBusLocally(_i7.Bus? bus) => super.noSuchMethod(
+        Invocation.method(
+          #updateBusLocally,
+          [bus],
+        ),
+        returnValueForMissingStub: null,
+      );
+
+  @override
+  void removeBusLocally(String? id) => super.noSuchMethod(
+        Invocation.method(
+          #removeBusLocally,
+          [id],
+        ),
+        returnValueForMissingStub: null,
+      );
+
+  @override
+  void randomizeOnlineBusTelemetry() => super.noSuchMethod(
+        Invocation.method(
+          #randomizeOnlineBusTelemetry,
+          [],
+        ),
+        returnValueForMissingStub: null,
+      );
+
+  @override
   void dispose() => super.noSuchMethod(
         Invocation.method(
           #dispose,
@@ -450,8 +537,8 @@ class MockDataNotifier extends _i1.Mock implements _i2.DataNotifier {
       ) as bool);
 
   @override
-  _i8.RemoveListener addListener(
-    _i9.Listener<_i2.DataState>? listener, {
+  _i9.RemoveListener addListener(
+    _i10.Listener<_i2.DataState>? listener, {
     bool? fireImmediately = true,
   }) =>
       (super.noSuchMethod(
@@ -461,5 +548,5 @@ class MockDataNotifier extends _i1.Mock implements _i2.DataNotifier {
           {#fireImmediately: fireImmediately},
         ),
         returnValue: () {},
-      ) as _i8.RemoveListener);
+      ) as _i9.RemoveListener);
 }

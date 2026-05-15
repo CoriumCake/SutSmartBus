@@ -6,11 +6,30 @@
 #include <SPI.h>
 #include <SD.h>
 #include <WebServer.h>
+
 #include <ESPmDNS.h>
 #include <Wire.h>
 #include <RTClib.h>
 #include "DHT.h"
 #include "config.h"
+
+// Toggle firmware diagnostics here.
+// Set to false after the MQTT/app issue is fixed.
+#ifndef PM_DEBUG_MODE
+#define PM_DEBUG_MODE true
+#endif
+
+#ifndef PM_DEBUG_INTERVAL_MS
+#define PM_DEBUG_INTERVAL_MS 5000
+#endif
+
+#ifndef PM_DATA_PUBLISH_INTERVAL_MS
+#define PM_DATA_PUBLISH_INTERVAL_MS 1000
+#endif
+
+#ifndef DHT_READ_INTERVAL_MS
+#define DHT_READ_INTERVAL_MS 2000
+#endif
 
 // OTA Update State
 bool otaPending = false;
@@ -31,7 +50,8 @@ char bus_mac[18];
 bool wifiConnected = false;
 float tempC = 0, humid = 0;
 uint16_t pm25 = 0, pm10 = 0;
-unsigned long last5s = 0, last30s = 0, lastGpsPublish = 0;
+unsigned long lastDataPublish = 0, lastDhtRead = 0, last30s = 0, lastGpsPublish = 0;
+unsigned long lastDebugStatus = 0, lastPmsDebug = 0, lastGpsDebug = 0, lastMqttSkipDebug = 0;
 const char* logFilename = "/gps_log.csv";
 bool mqttConfigured = false;
 bool mqttConnectAttempted = false;
@@ -48,10 +68,14 @@ void publishGPS();
 void saveToSD();
 void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup);
 void performOTA();
+void debugStatus();
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
+  if (PM_DEBUG_MODE) {
+    Serial.println("[DEBUG] PM debug mode enabled");
+  }
   Serial.println("🚌 SUT SmartBus PM/GPS Module v2.0");
 
   // Initialize Hardware
@@ -108,11 +132,26 @@ void loop() {
   processGPS();
   processPMS();
 
-  // 5 Second Task: Environment & Status
-  if (millis() - last5s >= INTERVAL_5S) {
-    last5s = millis();
-    tempC = dht.readTemperature();
-    humid = dht.readHumidity();
+  if (PM_DEBUG_MODE && millis() - lastDebugStatus >= PM_DEBUG_INTERVAL_MS) {
+    lastDebugStatus = millis();
+    debugStatus();
+  }
+
+  if (millis() - lastDhtRead >= DHT_READ_INTERVAL_MS) {
+    lastDhtRead = millis();
+    float nextTemp = dht.readTemperature();
+    float nextHumid = dht.readHumidity();
+    if (!isnan(nextTemp)) {
+      tempC = nextTemp;
+    }
+    if (!isnan(nextHumid)) {
+      humid = nextHumid;
+    }
+  }
+
+  // Near-real-time environment publish for app updates
+  if (millis() - lastDataPublish >= PM_DATA_PUBLISH_INTERVAL_MS) {
+    lastDataPublish = millis();
     publishData();
   }
 
@@ -185,6 +224,9 @@ void setupMQTT() {
     mqttConnectAttempted = false;
     Serial.println("✅ MQTT Connected");
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
+    if (PM_DEBUG_MODE) {
+      Serial.printf("[DEBUG] MQTT client_id=%s session=%d subscribed=%s\n", bus_mac, sessionPresent, MQTT_TOPIC_OTA);
+    }
   });
   mqttClient.onDisconnect([](bool sessionPresent) {
     mqttConnectAttempted = false;
@@ -206,6 +248,9 @@ void setupMQTT() {
   mqttClient.setAutoReconnect(false);
   mqttClient.setKeepAlive(30);
   mqttConfigured = true;
+  if (PM_DEBUG_MODE) {
+    Serial.printf("[DEBUG] MQTT configured uri=%s topic=%s fast_topic=%s\n", mqttUri, MQTT_TOPIC, MQTT_TOPIC_FAST);
+  }
 }
 
 void processGPS() {
@@ -215,22 +260,87 @@ void processGPS() {
 }
 
 void processPMS() {
-  // Simple PMS reader - looking for frame start 0x42 0x4D
-  if (pmsSerial.available() >= 32) {
-    if (pmsSerial.read() == 0x42 && pmsSerial.read() == 0x4D) {
-      uint8_t buffer[30];
-      pmsSerial.readBytes(buffer, 30);
-      pm25 = (buffer[4] << 8) | buffer[5];
-      pm10 = (buffer[6] << 8) | buffer[7];
+  // Robust PMS frame sync: scan for 0x42 0x4D, then validate length/checksum.
+  while (pmsSerial.available() >= 32) {
+    if (pmsSerial.peek() != 0x42) {
+      pmsSerial.read();
+      continue;
     }
+
+    uint8_t frame[32];
+    size_t bytesRead = pmsSerial.readBytes(frame, sizeof(frame));
+    if (bytesRead != sizeof(frame)) {
+      if (PM_DEBUG_MODE) {
+        Serial.printf("[DEBUG] PMS short frame: bytes=%u\n", (unsigned)bytesRead);
+      }
+      return;
+    }
+
+    if (frame[0] != 0x42 || frame[1] != 0x4D) {
+      if (PM_DEBUG_MODE && millis() - lastPmsDebug >= PM_DEBUG_INTERVAL_MS) {
+        lastPmsDebug = millis();
+        Serial.printf("[DEBUG] PMS lost sync: header=0x%02X 0x%02X\n", frame[0], frame[1]);
+      }
+      continue;
+    }
+
+    uint16_t frameLength = ((uint16_t)frame[2] << 8) | frame[3];
+    if (frameLength != 28) {
+      if (PM_DEBUG_MODE && millis() - lastPmsDebug >= PM_DEBUG_INTERVAL_MS) {
+        lastPmsDebug = millis();
+        Serial.printf("[DEBUG] PMS unexpected frame length=%u\n", frameLength);
+      }
+      continue;
+    }
+
+    uint16_t expectedChecksum = ((uint16_t)frame[30] << 8) | frame[31];
+    uint16_t actualChecksum = 0;
+    for (int i = 0; i < 30; i++) {
+      actualChecksum += frame[i];
+    }
+
+    if (actualChecksum != expectedChecksum) {
+      if (PM_DEBUG_MODE && millis() - lastPmsDebug >= PM_DEBUG_INTERVAL_MS) {
+        lastPmsDebug = millis();
+        Serial.printf(
+          "[DEBUG] PMS checksum mismatch expected=%u actual=%u\n",
+          expectedChecksum,
+          actualChecksum
+        );
+      }
+      continue;
+    }
+
+    pm25 = ((uint16_t)frame[6] << 8) | frame[7];
+    pm10 = ((uint16_t)frame[8] << 8) | frame[9];
+    if (PM_DEBUG_MODE) {
+      Serial.printf("[DEBUG] PMS frame parsed pm2_5=%u pm10=%u\n", pm25, pm10);
+    }
+    return;
+  }
+
+  if (PM_DEBUG_MODE && millis() - lastPmsDebug >= PM_DEBUG_INTERVAL_MS) {
+    lastPmsDebug = millis();
+    Serial.printf("[DEBUG] PMS waiting for full frame available=%d\n", pmsSerial.available());
   }
 }
 
 void publishData() {
-  if (!mqttClient.connected()) return;
+  if (!mqttClient.connected()) {
+    if (PM_DEBUG_MODE && millis() - lastMqttSkipDebug >= PM_DEBUG_INTERVAL_MS) {
+      lastMqttSkipDebug = millis();
+      Serial.println("[DEBUG] Skip slow publish: MQTT is not connected");
+    }
+    return;
+  }
   StaticJsonDocument<256> doc;
   doc["bus_mac"] = bus_mac;
   doc["bus_name"] = BUS_NAME;
+  if (gps.location.isValid()) {
+    doc["lat"] = gps.location.lat();
+    doc["lon"] = gps.location.lng();
+    doc["speed"] = gps.speed.kmph();
+  }
   doc["temp"] = tempC;
   doc["hum"] = humid;
   doc["pm2_5"] = pm25;
@@ -239,11 +349,30 @@ void publishData() {
   
   char buffer[256];
   serializeJson(doc, buffer);
+  if (PM_DEBUG_MODE) {
+    Serial.printf("[DEBUG] Publish slow topic=%s payload=%s\n", MQTT_TOPIC, buffer);
+  }
   mqttClient.publish(MQTT_TOPIC, 1, false, buffer);
 }
 
 void publishGPS() {
-  if (!mqttClient.connected() || !gps.location.isValid()) return;
+  if (!mqttClient.connected()) {
+    if (PM_DEBUG_MODE && millis() - lastMqttSkipDebug >= PM_DEBUG_INTERVAL_MS) {
+      lastMqttSkipDebug = millis();
+      Serial.println("[DEBUG] Skip fast GPS publish: MQTT is not connected");
+    }
+    return;
+  }
+  if (!gps.location.isValid()) {
+    if (PM_DEBUG_MODE && millis() - lastGpsDebug >= PM_DEBUG_INTERVAL_MS) {
+      lastGpsDebug = millis();
+      Serial.printf("[DEBUG] Skip fast GPS publish: no valid GPS fix yet chars=%lu satellites=%lu\n",
+        (unsigned long)gps.charsProcessed(),
+        (unsigned long)(gps.satellites.isValid() ? gps.satellites.value() : 0)
+      );
+    }
+    return;
+  }
   StaticJsonDocument<128> doc;
   doc["bus_mac"] = bus_mac;
   doc["bus_name"] = BUS_NAME;
@@ -253,6 +382,9 @@ void publishGPS() {
   
   char buffer[128];
   serializeJson(doc, buffer);
+  if (PM_DEBUG_MODE) {
+    Serial.printf("[DEBUG] Publish fast topic=%s payload=%s\n", MQTT_TOPIC_FAST, buffer);
+  }
   mqttClient.publish(MQTT_TOPIC_FAST, 1, false, buffer);
 }
 
@@ -285,4 +417,21 @@ void performOTA() {
   WiFiClient client;
   t_httpUpdate_return ret = httpUpdate.update(client, otaUrl);
   if (ret == HTTP_UPDATE_OK) ESP.restart();
+}
+
+void debugStatus() {
+  Serial.printf(
+    "[DEBUG] status wifi=%s mqtt=%s rssi=%d gpsValid=%s gpsChars=%lu sats=%lu pm2_5=%u pm10=%u temp=%.1f hum=%.1f freeHeap=%lu\n",
+    WiFi.status() == WL_CONNECTED ? "connected" : "disconnected",
+    mqttClient.connected() ? "connected" : "disconnected",
+    WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0,
+    gps.location.isValid() ? "yes" : "no",
+    (unsigned long)gps.charsProcessed(),
+    (unsigned long)(gps.satellites.isValid() ? gps.satellites.value() : 0),
+    pm25,
+    pm10,
+    tempC,
+    humid,
+    (unsigned long)ESP.getFreeHeap()
+  );
 }

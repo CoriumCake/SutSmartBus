@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 `apps/flutter/` contains the Flutter client. Main app code lives in `lib/` with feature areas such as `screens/`, `providers/`, `services/`, and `widgets/`; tests live in `apps/flutter/test/`; static assets are under `apps/flutter/assets/`.
 
-`server/` contains the FastAPI backend. Core API code is in `server/app/`, shared config and auth helpers are in `server/core/`, route data is stored in `server/routes/`, and operational scripts such as seed and maintenance helpers live beside the app code. `hardware/` holds ESP32 and sensor firmware projects, and `migrate/` contains migration notes and architecture docs rather than runtime code.
+`server/` contains the FastAPI backend. Core API code is in `server/app/`, shared config and auth helpers are in `server/core/`, route data is stored in `server/routes/`, and operational scripts such as seed and maintenance helpers live beside the app code. `hardware/` holds ESP32 and sensor firmware projects.
 
 ## Build, Test, and Development Commands
 Use the repo root for containerized backend work:

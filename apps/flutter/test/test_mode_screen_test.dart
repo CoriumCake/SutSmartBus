@@ -37,6 +37,23 @@ void main() {
     when(mockApi.fetchRoutes()).thenAnswer((_) async => <BusRoute>[]);
     when(mockApi.sendFakeLocation(any)).thenAnswer((_) async {});
     when(mockApi.deleteFakeLocation(any)).thenAnswer((_) async {});
+
+    // StateNotifierProvider listens to the notifier immediately when watched.
+    when(mockData.state).thenReturn(DataState(loading: false));
+    when(mockData.addListener(any,
+            fireImmediately: anyNamed('fireImmediately')))
+        .thenAnswer((invocation) {
+      final listener =
+          invocation.positionalArguments.first as void Function(DataState);
+      final fireImmediately =
+          invocation.namedArguments[#fireImmediately] as bool? ?? true;
+      if (fireImmediately) {
+        listener(DataState(loading: false));
+      }
+      return () {};
+    });
+    when(mockData.refreshBuses()).thenAnswer((_) async {});
+    when(mockData.handleMqttMessage(any, any)).thenReturn(null);
   });
 
   // ─── Helper ────────────────────────────────────────────────────────────────
@@ -143,8 +160,7 @@ void main() {
       expect(find.text(secondUrl), findsOneWidget);
     });
 
-    testWidgets('disabling test mode resets provider state',
-        (tester) async {
+    testWidgets('disabling test mode resets provider state', (tester) async {
       // Use a ProviderContainer to test state directly
       final container = ProviderContainer(overrides: getOverrides());
       addTearDown(container.dispose);

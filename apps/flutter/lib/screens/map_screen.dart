@@ -234,8 +234,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }).toList();
   }
 
-  _BusHeadingTransform _headingTransformForBus(
-      Bus bus, List<BusRoute> routes) {
+  _BusHeadingTransform _headingTransformForBus(Bus bus, List<BusRoute> routes) {
     final currentPoint = _renderedBusPositions[bus.busMac] ??
         (bus.currentLat != null && bus.currentLon != null
             ? LatLng(bus.currentLat!, bus.currentLon!)
@@ -262,8 +261,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         final busPoint = LatLng(bus.currentLat!, bus.currentLon!);
         final segmentIndex = calculateClosestSegmentIndex(route, busPoint);
         final start = route.waypoints[segmentIndex];
-        final end =
-            route.waypoints[math.min(segmentIndex + 1, route.waypoints.length - 1)];
+        final end = route
+            .waypoints[math.min(segmentIndex + 1, route.waypoints.length - 1)];
         final startPoint = LatLng(start.latitude, start.longitude);
         final endPoint = LatLng(end.latitude, end.longitude);
         if (_pointDistanceSquared(startPoint, endPoint) > 0) {
@@ -285,8 +284,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final dx = to.longitude - from.longitude;
     final dy = -(to.latitude - from.latitude);
     final rawAngle = math.atan2(dy, dx);
-    final flipHorizontally =
-        rawAngle > math.pi / 2 || rawAngle < -math.pi / 2;
+    final flipHorizontally = rawAngle > math.pi / 2 || rawAngle < -math.pi / 2;
     final normalizedAngle = flipHorizontally
         ? (rawAngle > 0 ? rawAngle - math.pi : rawAngle + math.pi)
         : rawAngle;
@@ -296,23 +294,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
   }
 
-  void _syncAnimatedBusPositions(List<Bus> buses) {
+  void _syncAnimatedBusPositions(List<Bus> buses, List<BusRoute> routes) {
     final activeBusMacs = buses.map((bus) => bus.busMac).toSet();
-    _renderedBusPositions.removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
-    _busAnimationStart.removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
-    _busAnimationTarget.removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
+    _renderedBusPositions
+        .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
+    _busAnimationStart
+        .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
+    _busAnimationTarget
+        .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
     _busAnimationStartedAt
         .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
     _busAnimationTravelDurations
         .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
-    _lastRawBusPositions.removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
+    _lastRawBusPositions
+        .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
     _previousRawBusPositions
         .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
     _lastRawBusUpdatedAt
         .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
     _previousRawBusUpdatedAt
         .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
-    _latestBusesByMac.removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
+    _latestBusesByMac
+        .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
     _lockedNextStopWaypointIndexByBus
         .removeWhere((busMac, _) => !activeBusMacs.contains(busMac));
 
@@ -326,7 +329,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         continue;
       }
 
-      final nextPoint = LatLng(lat, lon);
+      final nextPoint = _snappedPointForBus(bus, routes) ?? LatLng(lat, lon);
       final currentRendered = _renderedBusPositions[bus.busMac];
       final currentTarget = _busAnimationTarget[bus.busMac];
 
@@ -368,8 +371,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         hasAnimatingBus = true;
       } else {
         final startedAt = _busAnimationStartedAt[bus.busMac];
-        final travelDuration =
-            _busAnimationTravelDurations[bus.busMac] ?? _busAnimationMinDuration;
+        final travelDuration = _busAnimationTravelDurations[bus.busMac] ??
+            _busAnimationMinDuration;
         if (startedAt != null &&
             DateTime.now().difference(startedAt) < travelDuration) {
           hasAnimatingBus = true;
@@ -430,9 +433,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       } else {
         hasAnimatingBus = true;
         _renderedBusPositions[busMac] = LatLng(
-          _lerpDouble(start.latitude, target.latitude, Curves.linear.transform(progress)),
-          _lerpDouble(
-              start.longitude, target.longitude, Curves.linear.transform(progress)),
+          _lerpDouble(start.latitude, target.latitude,
+              Curves.linear.transform(progress)),
+          _lerpDouble(start.longitude, target.longitude,
+              Curves.linear.transform(progress)),
         );
       }
     }
@@ -553,8 +557,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return null;
     }
 
-    final maxExtrapolationRatio =
-        _busMaxExtrapolationDistanceM / rawDistance;
+    final maxExtrapolationRatio = _busMaxExtrapolationDistanceM / rawDistance;
     final extrapolationRatio = math.min(
       extrapolationAge.inMilliseconds / rawIntervalMs,
       maxExtrapolationRatio,
@@ -564,11 +567,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
 
     final bus = _latestBusesByMac[busMac];
-    final route = bus != null
-        ? _resolveRouteForBus(bus, ref.read(routesProvider))
-        : null;
-    final extrapolationDistanceM =
-        math.min(rawDistance * extrapolationRatio, _busMaxExtrapolationDistanceM);
+    final route =
+        bus != null ? _resolveRouteForBus(bus, ref.read(routesProvider)) : null;
+    final extrapolationDistanceM = math.min(
+        rawDistance * extrapolationRatio, _busMaxExtrapolationDistanceM);
 
     if (route != null && route.waypoints.length >= 2) {
       return _advanceAlongRoute(route, currentPoint, extrapolationDistanceM);
@@ -658,6 +660,54 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       segmentStart.latitude + (clampedT * dx),
       segmentStart.longitude + (clampedT * dy),
     );
+  }
+
+  LatLng? _snappedPointForBus(Bus bus, List<BusRoute> routes) {
+    final lat = bus.currentLat;
+    final lon = bus.currentLon;
+    if (lat == null || lon == null) {
+      return null;
+    }
+
+    final route = _resolveRouteForBus(bus, routes);
+    if (route == null || route.waypoints.length < 2) {
+      return LatLng(lat, lon);
+    }
+
+    return _projectPointOntoRoute(route, LatLng(lat, lon));
+  }
+
+  LatLng _projectPointOntoRoute(BusRoute route, LatLng point) {
+    final waypoints = route.waypoints;
+    if (waypoints.isEmpty) {
+      return point;
+    }
+    if (waypoints.length == 1) {
+      return LatLng(waypoints.first.latitude, waypoints.first.longitude);
+    }
+
+    var bestPoint = point;
+    var bestDistance = double.infinity;
+
+    for (int i = 0; i < waypoints.length - 1; i++) {
+      final projected = _projectPointOntoSegment(
+        point,
+        waypoints[i],
+        waypoints[i + 1],
+      );
+      final distance = getDistanceFromLatLonInM(
+        point.latitude,
+        point.longitude,
+        projected.latitude,
+        projected.longitude,
+      );
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestPoint = projected;
+      }
+    }
+
+    return bestPoint;
   }
 
   Bus _renderedBus(Bus bus) {
@@ -804,7 +854,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         userLat: userLocation.latitude,
         userLon: userLocation.longitude,
       );
-    final route = _resolveRouteForBus(busInfo.bus, ref.read(routesProvider));
+      final route = _resolveRouteForBus(busInfo.bus, ref.read(routesProvider));
 
       if (!mounted) return;
 
@@ -1087,8 +1137,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             nextStopIndex != null ? i - nextStopIndex : -1;
         final isPassed =
             isFocusedStopSet && nextStopIndex != null && i < nextStopIndex;
-        final isUpcomingWithinFive =
-            isFocusedStopSet &&
+        final isUpcomingWithinFive = isFocusedStopSet &&
             nextStopIndex != null &&
             i >= nextStopIndex &&
             i < nextStopIndex + 5;
@@ -1100,9 +1149,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             : isBeyondUpcomingWindow
                 ? const Color(0xFFE2E8F0)
                 : Colors.white;
-        final markerBorderColor = isBeyondUpcomingWindow
-            ? const Color(0xFFCBD5E1)
-            : _mapAccent;
+        final markerBorderColor =
+            isBeyondUpcomingWindow ? const Color(0xFFCBD5E1) : _mapAccent;
 
         return Marker(
           point: LatLng(stop.latitude, stop.longitude),
@@ -1431,8 +1479,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (lockedWaypoint.isStop &&
           lockedWaypoint.stopName != null &&
           lockedWaypoint.stopName!.trim().isNotEmpty) {
-        final lockedStop =
-            _buildNextStopResultFromWaypoint(lockedWaypoint, lockedIndex, busPosition);
+        final lockedStop = _buildNextStopResultFromWaypoint(
+            lockedWaypoint, lockedIndex, busPosition);
         final lockedDistance = lockedStop.distanceM ?? 0;
         final candidateDistance = candidate?.distanceM ?? 1 << 30;
 
@@ -1604,6 +1652,106 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     required List<Waypoint> nextStops,
     required int? etaToUser,
   }) {
+    if (bus.isOffline) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: _selectedBusDockMaxWidth,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: Image.asset(
+                          'assets/images/bus_icon.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          bus.busName,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF1F2937),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedInfoBusMac = null;
+                          });
+                        },
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.cloud_off_rounded,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'This bus is offline',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF475569),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final nextStopName =
         nextStops.isNotEmpty ? nextStops.first.stopName ?? '-' : '-';
 
@@ -1789,6 +1937,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final nearbyCandidateBuses = testModeEnabled
         ? buses
         : buses.where((bus) => !bus.isDebugBus).toList();
+    final onlineNearbyCandidateBuses =
+        nearbyCandidateBuses.where((bus) => !bus.isOffline).toList();
 
     final allStops = routes.expand((r) => r.stops).toList();
     final nearest = findNearestStop(
@@ -1802,14 +1952,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final displayBus = findClosestBusToUser(
       LatLng(_userLocation!.latitude, _userLocation!.longitude),
-      nearbyCandidateBuses,
+      onlineNearbyCandidateBuses,
       routes,
     );
-    final incomingBuses =
-        calculateIncomingBuses(nearest.stop, nearbyCandidateBuses, routes);
+    final incomingBuses = calculateIncomingBuses(
+        nearest.stop, onlineNearbyCandidateBuses, routes);
     final ridingBus = _ridingBusMac == null
         ? null
         : buses.where((bus) => bus.busMac == _ridingBusMac).firstOrNull;
+    final isRidingBusOffline = ridingBus?.isOffline ?? false;
     final ridingRoute =
         ridingBus != null ? _resolveRouteForBus(ridingBus, routes) : null;
     final nextStop = ridingBus != null
@@ -1823,6 +1974,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final canRide = displayBus != null &&
         displayBus.distanceM <= _rideDetectionDistanceM &&
         _isRideReadyFor(displayBus.bus.busMac);
+    final hasOfflineCandidates =
+        nearbyCandidateBuses.any((bus) => bus.isOffline);
+    final shouldShowOfflineState = _ridingBusMac != null
+        ? isRidingBusOffline
+        : displayBus == null &&
+            hasOfflineCandidates &&
+            onlineNearbyCandidateBuses.isEmpty;
+    final offlineBus = _ridingBusMac != null
+        ? ridingBus
+        : nearbyCandidateBuses.where((bus) => bus.isOffline).firstOrNull;
 
     return Positioned(
       bottom: 24,
@@ -1872,10 +2033,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                _ridingBusMac == null
-                                    ? (displayBus?.bus.busName ??
-                                        'Incoming Bus')
-                                    : (nextStop?.stopName ?? 'End of route'),
+                                shouldShowOfflineState
+                                    ? (offlineBus?.busName ?? 'Bus Offline')
+                                    : _ridingBusMac == null
+                                        ? (displayBus?.bus.busName ??
+                                            'Incoming Bus')
+                                        : (nextStop?.stopName ??
+                                            'End of route'),
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w800,
@@ -1888,9 +2052,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _ridingBusMac == null
-                              ? 'Incoming Bus'
-                              : 'Next Station',
+                          shouldShowOfflineState
+                              ? 'Offline'
+                              : _ridingBusMac == null
+                                  ? 'Incoming Bus'
+                                  : 'Next Station',
                           style: const TextStyle(
                             fontSize: 14,
                             color: Color(0xFF718096),
@@ -1913,28 +2079,40 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              _ridingBusMac == null
-                                  ? Icons.directions_walk
-                                  : Icons.access_time_filled_rounded,
+                              shouldShowOfflineState
+                                  ? Icons.cloud_off_rounded
+                                  : _ridingBusMac == null
+                                      ? Icons.directions_walk
+                                      : Icons.access_time_filled_rounded,
                               size: 16,
-                              color: const Color(0xFF48BB78),
+                              color: shouldShowOfflineState
+                                  ? const Color(0xFF94A3B8)
+                                  : const Color(0xFF48BB78),
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              _ridingBusMac == null
-                                  ? '${nearest.distance.round()}m'
-                                  : '${nextStop?.etaMinutes ?? 0} min',
-                              style: const TextStyle(
+                              shouldShowOfflineState
+                                  ? 'OFFLINE'
+                                  : _ridingBusMac == null
+                                      ? '${nearest.distance.round()}m'
+                                      : '${nextStop?.etaMinutes ?? 0} min',
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF48BB78),
+                                color: shouldShowOfflineState
+                                    ? Color(0xFF94A3B8)
+                                    : Color(0xFF48BB78),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _ridingBusMac == null ? 'Station' : 'ETA',
+                          shouldShowOfflineState
+                              ? 'Status'
+                              : _ridingBusMac == null
+                                  ? 'Station'
+                                  : 'ETA',
                           style: const TextStyle(
                             fontSize: 10,
                             color: Color(0xFFA0AEC0),
@@ -1981,9 +2159,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _ridingBusMac == null
-                                ? (displayBus?.bus.busName ?? '-')
-                                : (nextStop?.stopName ?? '-'),
+                            shouldShowOfflineState
+                                ? 'Offline'
+                                : _ridingBusMac == null
+                                    ? (displayBus?.bus.busName ?? '-')
+                                    : (nextStop?.stopName ?? '-'),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -2048,11 +2228,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _ridingBusMac == null
-                                ? (displayBus != null
-                                    ? '${displayBus.etaMinutes} min'
-                                    : '-')
-                                : (ridingRoute?.routeName ?? '-'),
+                            shouldShowOfflineState
+                                ? '-'
+                                : _ridingBusMac == null
+                                    ? (displayBus != null
+                                        ? '${displayBus.etaMinutes} min'
+                                        : '-')
+                                    : (ridingRoute?.routeName ?? '-'),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -2068,7 +2250,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              if (_ridingBusMac == null &&
+              if (!shouldShowOfflineState &&
+                  _ridingBusMac == null &&
                   incomingBuses.length > 1 &&
                   displayBus != null) ...[
                 Container(
@@ -2106,7 +2289,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
                 const SizedBox(height: 12),
               ],
-              if (_ridingBusMac != null)
+              if (shouldShowOfflineState)
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE2E8F0),
+                      foregroundColor: const Color(0xFF94A3B8),
+                      disabledBackgroundColor: const Color(0xFFE2E8F0),
+                      disabledForegroundColor: const Color(0xFF94A3B8),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.cloud_off_rounded, size: 20),
+                        SizedBox(width: 8),
+                        Text(
+                          'OFFLINE',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_ridingBusMac != null)
                 Row(
                   children: [
                     Expanded(
@@ -2140,7 +2355,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                 !_isRingingBell;
 
                             return ElevatedButton(
-                              onPressed: canRing ? () => _ringBus(actionBus) : null,
+                              onPressed:
+                                  canRing ? () => _ringBus(actionBus) : null,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: canRing
                                     ? const Color(0xFFF6C852)
@@ -2197,16 +2413,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     onPressed: _isStartingRide
                         ? null
                         : displayBus == null
-                        ? () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('No nearby buses available.'),
-                              ),
-                            );
-                          }
-                        : canRide
-                            ? () => _startRide(displayBus)
-                            : null,
+                            ? () {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('No nearby buses available.'),
+                                  ),
+                                );
+                              }
+                            : canRide
+                                ? () => _startRide(displayBus)
+                                : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: canRide
                           ? const Color(0xFFF6C852)
@@ -2225,8 +2441,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           _isStartingRide
                               ? Icons.hourglass_top_rounded
                               : canRide
-                              ? Icons.airport_shuttle_rounded
-                              : Icons.near_me_rounded,
+                                  ? Icons.airport_shuttle_rounded
+                                  : Icons.near_me_rounded,
                           size: 20,
                         ),
                         const SizedBox(width: 8),
@@ -2417,12 +2633,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final debugMode = ref.watch(debugProvider).debugMode;
     final isDark = ref.watch(themeProvider).isDark;
     final testMode = ref.watch(testModeProvider);
-    _syncAnimatedBusPositions(buses);
+    _syncAnimatedBusPositions(buses, routes);
     final renderedBuses = buses.map(_renderedBus).toList();
-    final displayedBuses = _ridingBusMac == null
+    final visibleRenderedBuses = debugMode
         ? renderedBuses
-        : renderedBuses.where((bus) => bus.busMac == _ridingBusMac).toList();
-    final focusedBus = _resolveFocusedBus(buses, routes);
+        : renderedBuses.where((bus) => !bus.isDebugBus).toList();
+    final displayedBuses = _ridingBusMac == null
+        ? visibleRenderedBuses
+        : visibleRenderedBuses
+            .where((bus) => bus.busMac == _ridingBusMac)
+            .toList();
+    final focusedBus = _resolveFocusedBus(visibleRenderedBuses, routes);
     final focusedRoute = focusedBus != null
         ? _resolveRouteForBus(focusedBus, routes)
         : _activeRoute;
@@ -2439,9 +2660,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (_userLocation != null && routes.isNotEmpty) {
       nearbyBusForRide = findClosestBusToUser(
         LatLng(_userLocation!.latitude, _userLocation!.longitude),
-        testMode.enabled
-            ? buses
-            : buses.where((bus) => !bus.isDebugBus).toList(),
+        visibleRenderedBuses.where((bus) => !bus.isOffline).toList(),
         routes,
       );
     }
@@ -2515,7 +2734,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 _buildModernActionBtn(Icons.my_location, () {
                   if (_userLocation != null) {
                     _mapController.move(
-                        LatLng(_userLocation!.latitude, _userLocation!.longitude),
+                        LatLng(
+                            _userLocation!.latitude, _userLocation!.longitude),
                         17.0);
                   } else {
                     _initLocation();
@@ -2529,8 +2749,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ],
             ),
           ),
-          _buildSelectedBusOverlay(renderedBuses, routes),
-          if (_selectedInfoBusMac == null) _buildNearbyPanel(routes, renderedBuses),
+          _buildSelectedBusOverlay(visibleRenderedBuses, routes),
+          if (_selectedInfoBusMac == null)
+            _buildNearbyPanel(routes, visibleRenderedBuses),
         ],
       ),
     );

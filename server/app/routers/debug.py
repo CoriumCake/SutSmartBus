@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ from pydantic import BaseModel
 from app import crud
 
 router = APIRouter(prefix="/api/debug", tags=["Debug"])
+logger = logging.getLogger(__name__)
 
 
 class DebugLocationUpdate(BaseModel):
@@ -30,6 +32,16 @@ class DebugLocationUpdate(BaseModel):
 async def upsert_debug_location(payload: DebugLocationUpdate):
     lat = payload.lat if payload.lat is not None else payload.current_lat
     lon = payload.lon if payload.lon is not None else payload.current_lon
+    logger.info(
+        "Debug location update bus=%s lat=%s lon=%s pm2_5=%s pm10=%s temp=%s hum=%s",
+        payload.bus_mac,
+        lat,
+        lon,
+        payload.pm2_5,
+        payload.pm10,
+        payload.temp,
+        payload.hum,
+    )
 
     updated_bus = await crud.update_bus_location(
         mac_address=payload.bus_mac,
@@ -68,6 +80,7 @@ async def upsert_debug_location(payload: DebugLocationUpdate):
 @router.delete("/location/{bus_mac}")
 async def delete_debug_location(bus_mac: str):
     deleted = await crud.delete_bus(bus_mac)
+    logger.info("Debug location delete bus=%s deleted=%s", bus_mac, deleted)
     if not deleted:
         return {"success": True, "message": "Debug bus already absent"}
     return {"success": True, "message": f"Deleted debug bus {bus_mac}"}
