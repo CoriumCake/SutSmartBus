@@ -53,6 +53,8 @@ bool mqttConfigured = false;
 char mqttUri[128];
 bool ringPending = false;
 bool mqttConnectAttempted = false;
+bool mqttNeedsStopBeforeReconnect = false;
+unsigned long lastMqttAttempt = 0, lastMqttStop = 0;
 
 PsychicMqttClient mqttClient;
 Preferences preferences;
@@ -247,6 +249,7 @@ void setupMQTT() {
   mqttClient.onMessage(mqttCallback);
   mqttClient.onConnect([](bool sessionPresent) {
     mqttConnectAttempted = false;
+    mqttNeedsStopBeforeReconnect = false;
     Serial.println("✅ MQTT Connected");
     mqttClient.subscribe(MQTT_TOPIC_RING, 1);
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
@@ -254,10 +257,12 @@ void setupMQTT() {
   });
   mqttClient.onDisconnect([](bool sessionPresent) {
     mqttConnectAttempted = false;
+    mqttNeedsStopBeforeReconnect = true;
     Serial.println("MQTT disconnected");
   });
   mqttClient.onError([](esp_mqtt_error_codes_t error) {
     mqttConnectAttempted = false;
+    mqttNeedsStopBeforeReconnect = true;
     Serial.printf("MQTT error type=%d tls=%d stack=%d sock=%d\n",
       error.error_type,
       error.esp_tls_last_esp_err,
@@ -278,9 +283,16 @@ void setupMQTT() {
 void reconnectMQTT() {
   if (!mqttConfigured) return;
   if (mqttConnectAttempted) return;
-  static unsigned long lastMqtt = 0;
-  if (millis() - lastMqtt < 10000) return;
-  lastMqtt = millis();
+  if (mqttNeedsStopBeforeReconnect) {
+    mqttClient.forceStop();
+    mqttNeedsStopBeforeReconnect = false;
+    lastMqttStop = millis();
+    return;
+  }
+
+  if (lastMqttStop != 0 && millis() - lastMqttStop < 500) return;
+  if (millis() - lastMqttAttempt < 10000) return;
+  lastMqttAttempt = millis();
   mqttConnectAttempted = true;
   Serial.println("🔌 MQTT Reconnecting...");
   mqttClient.connect();

@@ -51,8 +51,10 @@ float tempC = 0, humid = 0;
 uint16_t pm25 = 0, pm10 = 0;
 unsigned long lastDataPublish = 0, lastDhtRead = 0, lastGpsPublish = 0;
 unsigned long lastDebugStatus = 0, lastPmsDebug = 0, lastGpsDebug = 0, lastMqttSkipDebug = 0, lastWifiRetry = 0;
+unsigned long lastMqttAttempt = 0, lastMqttStop = 0;
 bool mqttConfigured = false;
 bool mqttConnectAttempted = false;
+bool mqttNeedsStopBeforeReconnect = false;
 char mqttUri[128];
 uint8_t wifiNetworkIndex = 0;
 
@@ -210,9 +212,16 @@ void startWiFiAttempt(bool rotateNetwork) {
 void reconnectMQTT() {
   if (!mqttConfigured) return;
   if (mqttConnectAttempted) return;
-  static unsigned long lastAttempt = 0;
-  if (millis() - lastAttempt < 10000) return;
-  lastAttempt = millis();
+  if (mqttNeedsStopBeforeReconnect) {
+    mqttClient.forceStop();
+    mqttNeedsStopBeforeReconnect = false;
+    lastMqttStop = millis();
+    return;
+  }
+
+  if (lastMqttStop != 0 && millis() - lastMqttStop < 500) return;
+  if (millis() - lastMqttAttempt < 10000) return;
+  lastMqttAttempt = millis();
   mqttConnectAttempted = true;
 
   Serial.printf("🔌 MQTT Connecting: %s\n", mqttUri);
@@ -250,6 +259,7 @@ void setupMQTT() {
   mqttClient.onMessage(mqttCallback);
   mqttClient.onConnect([](bool sessionPresent) {
     mqttConnectAttempted = false;
+    mqttNeedsStopBeforeReconnect = false;
     Serial.println("✅ MQTT Connected");
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
     if (PM_DEBUG_MODE) {
@@ -258,10 +268,12 @@ void setupMQTT() {
   });
   mqttClient.onDisconnect([](bool sessionPresent) {
     mqttConnectAttempted = false;
+    mqttNeedsStopBeforeReconnect = true;
     Serial.println("MQTT disconnected");
   });
   mqttClient.onError([](esp_mqtt_error_codes_t error) {
     mqttConnectAttempted = false;
+    mqttNeedsStopBeforeReconnect = true;
     Serial.printf("MQTT error type=%d tls=%d stack=%d sock=%d\n",
       error.error_type,
       error.esp_tls_last_esp_err,
