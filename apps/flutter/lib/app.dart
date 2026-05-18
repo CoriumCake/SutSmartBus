@@ -8,12 +8,9 @@ import 'screens/map_screen.dart';
 import 'screens/routes_screen.dart';
 import 'screens/air_quality_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/bus_management_screen.dart';
 import 'screens/air_quality_dashboard_screen.dart';
 import 'screens/about_screen.dart';
-import 'screens/testing_screen.dart';
 import 'screens/feedback_screen.dart';
-import 'screens/developer_mode_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/legal_consent_screen.dart';
 import 'screens/legal_document_screen.dart';
@@ -91,12 +88,6 @@ final goRouter = GoRouter(
     ),
     // Stack screens (pushed on top of tabs)
     GoRoute(
-      path: '/bus-management',
-      name: 'busManagement',
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const BusManagementScreen(),
-    ),
-    GoRoute(
       path: '/air-quality-dashboard',
       name: 'airQualityDashboard',
       parentNavigatorKey: _rootNavigatorKey,
@@ -109,22 +100,10 @@ final goRouter = GoRouter(
       builder: (context, state) => const AboutScreen(),
     ),
     GoRoute(
-      path: '/testing',
-      name: 'testing',
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const TestingScreen(),
-    ),
-    GoRoute(
       path: '/feedback',
       name: 'feedback',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const FeedbackScreen(),
-    ),
-    GoRoute(
-      path: '/developer',
-      name: 'developer',
-      parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => const DeveloperModeScreen(),
     ),
     GoRoute(
       path: '/passenger-stats',

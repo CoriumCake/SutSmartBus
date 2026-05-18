@@ -29,6 +29,7 @@ def bus_document_to_app_payload(bus_doc: dict) -> dict:
         return {}
 
     return {
+        "bus_id": bus_doc.get("bus_id"),
         "bus_mac": bus_doc.get("mac_address"),
         "bus_name": bus_doc.get("bus_name"),
         "lat": bus_doc.get("current_lat"),
@@ -43,14 +44,23 @@ def bus_document_to_app_payload(bus_doc: dict) -> dict:
     }
 
 
-async def resolve_bus_identity(bus_mac: str, bus_name: str | None):
-    bus = await crud.get_bus_by_mac(bus_mac)
+async def resolve_bus_identity(
+    bus_mac: str,
+    bus_name: str | None,
+    bus_id: str | None = None,
+):
+    bus = None
+    if bus_id:
+        bus = await crud.get_bus_by_bus_id(bus_id)
+    if bus is None:
+        bus = await crud.get_bus_by_mac(bus_mac)
     if bus is None and bus_name:
         bus = await crud.get_bus_by_name(bus_name)
 
+    resolved_bus_id = bus.get("bus_id") if bus else bus_id
     resolved_mac = bus.get("mac_address") if bus else bus_mac
     resolved_name = bus.get("bus_name") if bus else bus_name
-    return bus, resolved_mac, resolved_name
+    return bus, resolved_bus_id, resolved_mac, resolved_name
 
 # Helper for Point in Polygon (Ray Casting)
 def is_point_in_polygon(lat: float, lon: float, polygon: list):
@@ -165,6 +175,7 @@ def on_message(client, userdata, msg):
         if msg.topic == constants.TOPIC_BUS_DOOR_COUNT:
             try:
                 data = json.loads(payload_str)
+                bus_id = (data.get('bus_id') or '').strip() or None
                 bus_mac = data.get('bus_mac', constants.BUS_MAC_MOCK)
                 bus_name = (data.get('bus_name') or '').strip() or None
                 current_passengers = data.get('count', 0)
@@ -172,7 +183,7 @@ def on_message(client, userdata, msg):
                 resolved_bus = None
                 if state.state.main_loop:
                     async def resolve_bus():
-                        bus, _, _ = await resolve_bus_identity(bus_mac, bus_name)
+                        bus, _, _, _ = await resolve_bus_identity(bus_mac, bus_name, bus_id)
                         return bus
 
                     resolved_bus = asyncio.run_coroutine_threadsafe(
@@ -214,6 +225,7 @@ def on_message(client, userdata, msg):
                         seats_available = seats_available_for_count(current_passengers)
                         updated_bus = await crud.update_bus_location(
                             mac_address=mac, lat=None, lon=None,
+                            bus_id=bus_id,
                             seats_available=seats_available, pm2_5=None, pm10=None,
                             temp=None, hum=None,
                             person_count=current_passengers
@@ -241,6 +253,7 @@ def on_message(client, userdata, msg):
         # 2. Handle GPS/Status
         payload = json.loads(payload_str)
         
+        bus_id = (payload.get("bus_id") or "").strip() or None
         # TESTING MODE: If bus_mac is missing, assume it's our testing ESP32
         bus_mac = payload.get("bus_mac")
         if not bus_mac:
@@ -297,14 +310,16 @@ def on_message(client, userdata, msg):
 
         if state.state.main_loop:
             async def process_update_async():
-                resolved_bus, resolved_mac, resolved_name = await resolve_bus_identity(
+                resolved_bus, resolved_bus_id, resolved_mac, resolved_name = await resolve_bus_identity(
                     bus_mac,
                     bus_name,
+                    bus_id,
                 )
                 previous_bus = resolved_bus
                 # Update DB
                 updated_bus = await crud.update_bus_location(
                     mac_address=resolved_mac,
+                    bus_id=resolved_bus_id or bus_id,
                     bus_name=resolved_name,
                     lat=lat,
                     lon=lon,
@@ -361,26 +376,29 @@ def on_message(client, userdata, msg):
                         hum or 0.0,
                     )
 
-                return resolved_mac, resolved_name, updated_bus
+                return resolved_bus_id, resolved_mac, resolved_name, updated_bus
 
             fut = asyncio.run_coroutine_threadsafe(process_update_async(), state.state.main_loop)
             fut.add_done_callback(log_future_done)
             
             # Broadcast to App if not fast GPS
             if msg.topic != constants.TOPIC_ESP32_GPS_FAST:
+                resolved_bus_id = bus_id
                 resolved_mac = bus_mac
                 resolved_name = bus_name
                 try:
-                    resolved_bus, matched_mac, matched_name = asyncio.run_coroutine_threadsafe(
-                        resolve_bus_identity(bus_mac, bus_name),
+                    resolved_bus, matched_bus_id, matched_mac, matched_name = asyncio.run_coroutine_threadsafe(
+                        resolve_bus_identity(bus_mac, bus_name, bus_id),
                         state.state.main_loop,
                     ).result(timeout=1)
+                    resolved_bus_id = matched_bus_id
                     resolved_mac = matched_mac
                     resolved_name = matched_name
                 except Exception:
                     pass
 
                 app_payload = {
+                    "bus_id": resolved_bus_id,
                     "bus_mac": resolved_mac, "bus_name": resolved_name, "lat": lat, "lon": lon,
                     "pm2_5": pm2_5, "pm10": pm10, "temp": temp, "hum": hum, 
                     "seats_available": seats_available,

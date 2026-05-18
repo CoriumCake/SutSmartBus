@@ -83,6 +83,14 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
         (routeInfo?.nextStop?.stopName.toLowerCase().contains(query) ?? false);
   }
 
+  bool _shouldShowBus(Bus bus, bool debugMode) {
+    if (bus.isDebugRouteDriverBus) {
+      return false;
+    }
+
+    return debugMode || !bus.isDebugBus;
+  }
+
   @override
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
@@ -91,7 +99,7 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
     final theme = Theme.of(context);
     final t = ref.watch(languageProvider).t;
     final visibleBuses =
-        debugMode ? buses : buses.where((bus) => !bus.isDebugBus).toList();
+        buses.where((bus) => _shouldShowBus(bus, debugMode)).toList();
     final busCards = visibleBuses
         .map((bus) => (bus: bus, routeInfo: _routeInfoForBus(bus, routes)))
         .where((entry) => _matchesSearch(entry.bus, entry.routeInfo))
@@ -115,6 +123,9 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
             child: TextField(
               controller: _searchController,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: const Color(0xFF111827),
+              ),
               onChanged: (value) {
                 setState(() {
                   _searchQuery = value;
@@ -122,9 +133,15 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
               },
               decoration: InputDecoration(
                 hintText: 'Search bus, route, or stop',
-                prefixIcon: const Icon(Icons.search_rounded),
+                hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                  color: const Color(0xFF64748B),
+                ),
+                prefixIcon: const Icon(
+                  Icons.search_rounded,
+                  color: Color(0xFF64748B),
+                ),
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest,
+                fillColor: Colors.white,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none,
@@ -140,7 +157,10 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
                             _searchQuery = '';
                           });
                         },
-                        icon: const Icon(Icons.close_rounded),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF64748B),
+                        ),
                       ),
               ),
             ),

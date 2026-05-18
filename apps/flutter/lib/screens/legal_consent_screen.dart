@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../config/app_theme.dart';
 import '../legal/legal_documents.dart';
 import '../providers/legal_consent_provider.dart';
 
@@ -25,6 +24,7 @@ class LegalConsentScreen extends ConsumerStatefulWidget {
 class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
   bool _submitting = false;
   _ConsentStep _step = _ConsentStep.terms;
+  LegalDocumentLanguage _language = LegalDocumentLanguage.th;
 
   Future<void> _accept() async {
     if (_submitting) return;
@@ -64,7 +64,9 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
     final isTermsStep = _step == _ConsentStep.terms;
     final document = getLegalDocument(
       isTermsStep ? LegalDocumentType.terms : LegalDocumentType.privacy,
+      language: _language,
     );
+    final isThai = _language == LegalDocumentLanguage.th;
 
     return PopScope(
       canPop: false,
@@ -81,56 +83,37 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color:
-                                    AppTheme.sutOrange.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: const Icon(
-                                Icons.verified_user_outlined,
-                                color: AppTheme.sutOrange,
-                                size: 28,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    isTermsStep ? 'Step 1 of 2' : 'Step 2 of 2',
-                                    style: theme.textTheme.labelLarge,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    document.title,
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
                         Text(
-                          isTermsStep
-                              ? 'Read the Terms of Service to continue.'
-                              : 'Read the Privacy Policy to finish setup.',
-                          style: theme.textTheme.bodyLarge,
+                          document.title,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Effective date: ${document.effectiveDate}',
-                          style: theme.textTheme.bodyMedium,
+                        const SizedBox(height: 16),
+                        Center(
+                          child: SegmentedButton<LegalDocumentLanguage>(
+                            segments: const [
+                              ButtonSegment(
+                                value: LegalDocumentLanguage.th,
+                                label: Text('ไทย'),
+                              ),
+                              ButtonSegment(
+                                value: LegalDocumentLanguage.en,
+                                label: Text('English'),
+                              ),
+                            ],
+                            selected: {_language},
+                            onSelectionChanged: _submitting
+                                ? null
+                                : (selection) {
+                                    setState(
+                                      () => _language = selection.first,
+                                    );
+                                  },
+                          ),
                         ),
                         const SizedBox(height: 20),
                         Container(
@@ -174,28 +157,13 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 20),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            isTermsStep
-                                ? 'Accept the Terms of Service to continue to the Privacy Policy.'
-                                : 'Accept the Privacy Policy to enter the app. Declining will close the app and ask again next time.',
-                            style: theme.textTheme.bodyMedium,
-                          ),
-                        ),
                         const SizedBox(height: 24),
                         Row(
                           children: [
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: _submitting ? null : _decline,
-                                child: const Text('Decline'),
+                                child: Text(isThai ? 'ปฏิเสธ' : 'Decline'),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -204,10 +172,16 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
                                 onPressed: _submitting ? null : _accept,
                                 child: Text(
                                   _submitting
-                                      ? 'Please wait...'
+                                      ? isThai
+                                          ? 'กำลังดำเนินการ...'
+                                          : 'Please wait...'
                                       : isTermsStep
-                                          ? 'Accept Terms'
-                                          : 'Accept Privacy Policy',
+                                          ? isThai
+                                              ? 'ยอมรับข้อกำหนด'
+                                              : 'Accept Terms'
+                                          : isThai
+                                              ? 'ยอมรับนโยบาย'
+                                              : 'Accept Privacy Policy',
                                 ),
                               ),
                             ),

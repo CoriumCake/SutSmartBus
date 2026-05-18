@@ -14,6 +14,14 @@
 // Hardware Pins
 #define BUZZER_PIN        13 // Active HIGH
 
+#ifndef WIFI_RETRY_INTERVAL_MS
+#define WIFI_RETRY_INTERVAL_MS 3000
+#endif
+
+#ifndef MQTT_WIFI_RECOVERY_MS
+#define MQTT_WIFI_RECOVERY_MS 30000
+#endif
+
 // OTA state
 bool otaPending = false;
 String otaUrl = "";
@@ -47,6 +55,7 @@ unsigned long clearStartTime = 0;
 uint8_t background[160 * 80];   // Background reference (160x80 ROI)
 char bus_mac[18];
 char reported_bus_mac[18];
+char mqttClientId[40];
 bool wifiConnected = false;
 bool bgInitialized = false;
 bool mqttConfigured = false;
@@ -55,10 +64,107 @@ bool ringPending = false;
 bool mqttConnectAttempted = false;
 bool mqttNeedsStopBeforeReconnect = false;
 unsigned long lastMqttAttempt = 0, lastMqttStop = 0;
+unsigned long lastWifiRetry = 0, mqttDisconnectedSince = 0;
+uint8_t wifiNetworkIndex = 0;
+char mqttStatusTopic[96];
+char mqttStatusOnlinePayload[224];
+char mqttStatusOfflinePayload[224];
 
 PsychicMqttClient mqttClient;
 Preferences preferences;
 WebServer httpServer(80);
+bool isConfiguredWifiNetwork(const char* ssid) {
+  return ssid != nullptr &&
+         strlen(ssid) > 0 &&
+         strcmp(ssid, "fallback_ssid_1") != 0 &&
+         strcmp(ssid, "fallback_ssid_2") != 0;
+}
+
+uint8_t wifiNetworkCount() {
+  uint8_t count = 1;
+  if (isConfiguredWifiNetwork(WIFI_FALLBACK_1_SSID)) count++;
+  if (isConfiguredWifiNetwork(WIFI_FALLBACK_2_SSID)) count++;
+  return count;
+}
+
+const char* currentWifiSsid() {
+  if (wifiNetworkIndex == 1 && isConfiguredWifiNetwork(WIFI_FALLBACK_1_SSID)) {
+    return WIFI_FALLBACK_1_SSID;
+  }
+  if (wifiNetworkIndex == 2 && isConfiguredWifiNetwork(WIFI_FALLBACK_2_SSID)) {
+    return WIFI_FALLBACK_2_SSID;
+  }
+  return WIFI_SSID;
+}
+
+const char* currentWifiPassword() {
+  if (wifiNetworkIndex == 1 && isConfiguredWifiNetwork(WIFI_FALLBACK_1_SSID)) {
+    return WIFI_FALLBACK_1_PASSWORD;
+  }
+  if (wifiNetworkIndex == 2 && isConfiguredWifiNetwork(WIFI_FALLBACK_2_SSID)) {
+    return WIFI_FALLBACK_2_PASSWORD;
+  }
+  return WIFI_PASSWORD;
+}
+
+void startWiFiAttempt(bool rotateNetwork) {
+  uint8_t networkCount = wifiNetworkCount();
+  if (rotateNetwork && networkCount > 1) {
+    wifiNetworkIndex = (wifiNetworkIndex + 1) % networkCount;
+  } else if (networkCount == 1) {
+    wifiNetworkIndex = 0;
+  }
+
+  lastWifiRetry = millis();
+  mqttConnectAttempted = false;
+
+  const char* ssid = currentWifiSsid();
+  Serial.printf("WiFi %s ssid=%s index=%u status=%d\n",
+                rotateNetwork ? "retry" : "begin",
+                ssid,
+                wifiNetworkIndex,
+                WiFi.status());
+
+  WiFi.disconnect(false, false);
+  WiFi.begin(ssid, currentWifiPassword());
+}
+
+void handleWiFi() {
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    if (!wifiConnected) {
+      wifiConnected = true;
+      Serial.println("WiFi connected: " + WiFi.localIP().toString());
+      Serial.println("Live view: http://" + WiFi.localIP().toString());
+    }
+
+    if (!mqttClient.connected()) {
+      if (mqttDisconnectedSince == 0) {
+        mqttDisconnectedSince = millis();
+      } else if (millis() - mqttDisconnectedSince >= MQTT_WIFI_RECOVERY_MS) {
+        Serial.println("WiFi connected but MQTT offline for too long, retrying WiFi association");
+        startWiFiAttempt(true);
+      }
+    } else {
+      mqttDisconnectedSince = 0;
+    }
+    return;
+  }
+
+  if (wifiConnected) {
+    wifiConnected = false;
+    mqttConnectAttempted = false;
+    mqttNeedsStopBeforeReconnect = true;
+    mqttDisconnectedSince = millis();
+    Serial.printf("WiFi disconnected status=%d\n", status);
+    startWiFiAttempt(false);
+    return;
+  }
+
+  if (millis() - lastWifiRetry >= WIFI_RETRY_INTERVAL_MS) {
+    startWiFiAttempt(true);
+  }
+}
 
 // Audio Feedback
 void beep(int duration) {
@@ -85,7 +191,8 @@ void sendMQTT(String dir) {
   snprintf(
     buf,
     sizeof(buf),
-    "{\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"dir\":\"%s\",\"count\":%d,\"t\":%ld}",
+    "{\"bus_id\":\"%s\",\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"dir\":\"%s\",\"count\":%d,\"t\":%ld}",
+    BUS_ID_ALIAS,
     reported_bus_mac,
     BUS_NAME_ALIAS,
     dir.c_str(),
@@ -95,23 +202,38 @@ void sendMQTT(String dir) {
   mqttClient.publish(MQTT_TOPIC_DETECTION, 1, false, buf);
 }
 
-void publishStatus() {
-  if (!mqttClient.connected()) return;
-  char buf[192];
+void buildStatusPayload(bool isOnline, char* buffer, size_t bufferSize) {
   snprintf(
-    buf,
-    sizeof(buf),
-    "{\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"rssi\":%ld,\"uptime\":%lu,\"count\":%d,\"person_count\":%d}",
+    buffer,
+    bufferSize,
+    "{\"bus_id\":\"%s\",\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"component\":\"esp32_cam\",\"is_online\":%s,\"rssi\":%ld,\"uptime\":%lu,\"count\":%d,\"person_count\":%d}",
+    BUS_ID_ALIAS,
     reported_bus_mac,
     BUS_NAME_ALIAS,
-    WiFi.RSSI(),
-    millis()/1000,
+    isOnline ? "true" : "false",
+    isOnline && WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -100,
+    millis() / 1000,
     passengerCount,
     passengerCount
   );
-  char topic[64];
-  snprintf(topic, 64, "sut/bus/%s/status", reported_bus_mac);
-  mqttClient.publish(topic, 1, false, buf);
+}
+
+void publishStatus() {
+  if (!mqttClient.connected()) return;
+  buildStatusPayload(true, mqttStatusOnlinePayload, sizeof(mqttStatusOnlinePayload));
+  mqttClient.publish(mqttStatusTopic, 1, true, mqttStatusOnlinePayload);
+}
+
+void buildMqttClientId() {
+  char compactMac[13];
+  int compactIndex = 0;
+  for (size_t i = 0; bus_mac[i] != '\0' && compactIndex < (int)sizeof(compactMac) - 1; i++) {
+    if (bus_mac[i] != ':') {
+      compactMac[compactIndex++] = bus_mac[i];
+    }
+  }
+  compactMac[compactIndex] = '\0';
+  snprintf(mqttClientId, sizeof(mqttClientId), "BusCam-%s", compactMac);
 }
 
 void performOTA() {
@@ -271,11 +393,16 @@ void setupMQTT() {
     );
   });
   mqttClient.setServer(mqttUri);
-  mqttClient.setClientId(MQTT_CLIENT_ID);
+  mqttClient.setClientId(mqttClientId);
+  snprintf(mqttStatusTopic, sizeof(mqttStatusTopic), "sut/bus/%s/status", reported_bus_mac);
+  buildStatusPayload(true, mqttStatusOnlinePayload, sizeof(mqttStatusOnlinePayload));
+  buildStatusPayload(false, mqttStatusOfflinePayload, sizeof(mqttStatusOfflinePayload));
+  mqttClient.setWill(mqttStatusTopic, 1, true, mqttStatusOfflinePayload);
   // We already retry from loop(); enabling the library auto-reconnect as well
   // can double-start the underlying ESP-IDF client after a disconnect.
   mqttClient.setAutoReconnect(false);
-  mqttClient.setKeepAlive(30);
+  mqttClient.setKeepAlive(10);
+  Serial.printf("MQTT Client ID: %s\n", mqttClientId);
   Serial.printf("MQTT Final URI: %s\n", mqttUri);
   mqttConfigured = true;
 }
@@ -425,6 +552,7 @@ void setup() {
   } else {
     snprintf(reported_bus_mac, sizeof(reported_bus_mac), "%s", bus_mac);
   }
+  buildMqttClientId();
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -453,7 +581,11 @@ void setup() {
   passengerCount = clampPassengerCount(preferences.getInt("cnt", 0));
   preferences.putInt("cnt", passengerCount);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.mode(WIFI_STA);
+  WiFi.persistent(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.setSleep(false);
+  startWiFiAttempt(false);
   setupMQTT();
 
   httpServer.on("/", handleRoot);
@@ -466,12 +598,8 @@ void setup() {
 }
 
 void loop() {
+  handleWiFi();
   if (WiFi.status() == WL_CONNECTED) {
-    if (!wifiConnected) {
-      wifiConnected = true;
-      Serial.println("✅ WiFi: " + WiFi.localIP().toString());
-      Serial.println("🌐 Live view: http://" + WiFi.localIP().toString());
-    }
     if (!mqttClient.connected()) reconnectMQTT();
     if (ringPending) {
       ringPending = false;
@@ -620,3 +748,4 @@ void loop() {
   static unsigned long lastStat = 0;
   if (millis() - lastStat > 15000) { publishStatus(); lastStat = millis(); }
 }
+

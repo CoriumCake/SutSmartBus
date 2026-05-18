@@ -36,6 +36,26 @@ class IncomingBus {
   });
 }
 
+class BusArrivalDetails {
+  final NextStopResult? nextStop;
+  final Waypoint? targetStop;
+  final int? targetWaypointIndex;
+  final int etaMinutes;
+  final int distanceM;
+  final int stopsAway;
+  final double walkingDistanceM;
+
+  const BusArrivalDetails({
+    required this.nextStop,
+    required this.targetStop,
+    required this.targetWaypointIndex,
+    required this.etaMinutes,
+    required this.distanceM,
+    required this.stopsAway,
+    required this.walkingDistanceM,
+  });
+}
+
 class _BusHeadingTransform {
   final double angleRadians;
   final bool flipHorizontally;
@@ -114,6 +134,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   static const Duration _busMaxExtrapolationDuration =
       Duration(milliseconds: 1800);
   static const double _busMaxExtrapolationDistanceM = 45;
+  static const double _busSnapJitterHoldDistanceM = 6;
+  static const double _busSnapBlendDistanceM = 18;
+  static const double _busSnapBlendFactor = 0.35;
   static const double _nextStopHoldDistanceM = 90;
   static const double _nextStopReleaseDistanceM = 35;
   static const double _stopArrivalDistanceM = 20;
@@ -329,7 +352,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         continue;
       }
 
-      final nextPoint = _snappedPointForBus(bus, routes) ?? LatLng(lat, lon);
+      final nextPoint = _smoothedPointForBus(bus, routes) ?? LatLng(lat, lon);
       final currentRendered = _renderedBusPositions[bus.busMac];
       final currentTarget = _busAnimationTarget[bus.busMac];
 
@@ -675,6 +698,48 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
 
     return _projectPointOntoRoute(route, LatLng(lat, lon));
+  }
+
+  LatLng? _smoothedPointForBus(Bus bus, List<BusRoute> routes) {
+    final snappedPoint = _snappedPointForBus(bus, routes);
+    if (snappedPoint == null) {
+      return null;
+    }
+
+    final previousPoint = _lastRawBusPositions[bus.busMac] ??
+        _busAnimationTarget[bus.busMac] ??
+        _renderedBusPositions[bus.busMac];
+    if (previousPoint == null) {
+      return snappedPoint;
+    }
+
+    final distanceFromPrevious = getDistanceFromLatLonInM(
+      previousPoint.latitude,
+      previousPoint.longitude,
+      snappedPoint.latitude,
+      snappedPoint.longitude,
+    );
+
+    if (distanceFromPrevious <= _busSnapJitterHoldDistanceM) {
+      return previousPoint;
+    }
+
+    if (distanceFromPrevious <= _busSnapBlendDistanceM) {
+      return LatLng(
+        _lerpDouble(
+          previousPoint.latitude,
+          snappedPoint.latitude,
+          _busSnapBlendFactor,
+        ),
+        _lerpDouble(
+          previousPoint.longitude,
+          snappedPoint.longitude,
+          _busSnapBlendFactor,
+        ),
+      );
+    }
+
+    return snappedPoint;
   }
 
   LatLng _projectPointOntoRoute(BusRoute route, LatLng point) {
@@ -1271,8 +1336,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final activeBus = focusedBus;
     final busPoint = LatLng(activeBus!.currentLat!, activeBus.currentLon!);
-    final upcomingPoints =
-        _buildUpcomingPathPoints(focusedRoute, busPoint, stopCount: 5);
+    final arrivalDetails = _userLocation != null
+        ? _buildArrivalDetailsForBus(
+            activeBus,
+            focusedRoute,
+            LatLng(_userLocation!.latitude, _userLocation!.longitude),
+          )
+        : null;
+    final upcomingPoints = _buildUpcomingPathPoints(
+      focusedRoute,
+      busPoint,
+      stopCount: 5,
+      targetWaypointIndex: arrivalDetails?.targetWaypointIndex,
+      userPoint: arrivalDetails != null && _userLocation != null
+          ? LatLng(_userLocation!.latitude, _userLocation!.longitude)
+          : null,
+    );
 
     return [
       ...backgroundRoutes,
@@ -1291,6 +1370,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     BusRoute route,
     LatLng busPoint, {
     int stopCount = 5,
+    int? targetWaypointIndex,
+    LatLng? userPoint,
   }) {
     final waypoints = route.waypoints;
     if (waypoints.isEmpty) {
@@ -1301,9 +1382,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final points = <LatLng>[busPoint];
     var seenStops = 0;
 
-    for (int i = segmentIndex + 1; i < waypoints.length; i++) {
-      final waypoint = waypoints[i];
+    for (int step = 1; step <= waypoints.length; step++) {
+      final waypointIndex = (segmentIndex + step) % waypoints.length;
+      final waypoint = waypoints[waypointIndex];
       points.add(LatLng(waypoint.latitude, waypoint.longitude));
+
+      if (targetWaypointIndex != null) {
+        if (waypointIndex == targetWaypointIndex) {
+          break;
+        }
+        continue;
+      }
 
       if (waypoint.isStop && (waypoint.stopName?.trim().isNotEmpty ?? false)) {
         seenStops++;
@@ -1311,6 +1400,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           break;
         }
       }
+    }
+
+    if (targetWaypointIndex != null && userPoint != null) {
+      points.add(userPoint);
     }
 
     return points;
@@ -1524,6 +1617,119 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return candidate;
   }
 
+  ({Waypoint stop, int waypointIndex, double walkingDistanceM})?
+      _findNearestStopOnRoute(
+    BusRoute route,
+    LatLng userLocation,
+  ) {
+    Waypoint? closest;
+    int closestWaypointIndex = -1;
+    double closestDistance = double.infinity;
+
+    for (int i = 0; i < route.waypoints.length; i++) {
+      final waypoint = route.waypoints[i];
+      if (!waypoint.isStop || !(waypoint.stopName?.trim().isNotEmpty ?? false)) {
+        continue;
+      }
+
+      final distance = getDistanceFromLatLonInM(
+        userLocation.latitude,
+        userLocation.longitude,
+        waypoint.latitude,
+        waypoint.longitude,
+      );
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closest = waypoint;
+        closestWaypointIndex = i;
+      }
+    }
+
+    if (closest == null || closestWaypointIndex == -1) {
+      return null;
+    }
+
+    return (
+      stop: closest,
+      waypointIndex: closestWaypointIndex,
+      walkingDistanceM: closestDistance,
+    );
+  }
+
+  ({double distanceM, int stopsAway}) _measureRouteToWaypoint(
+    BusRoute route,
+    LatLng busPoint,
+    int targetWaypointIndex,
+  ) {
+    final waypoints = route.waypoints;
+    if (waypoints.isEmpty) {
+      return (distanceM: 0, stopsAway: 0);
+    }
+
+    final segmentIndex = calculateClosestSegmentIndex(route, busPoint);
+    var totalDistance = 0.0;
+    var stopsAway = 0;
+    var previousPoint = busPoint;
+
+    for (int step = 1; step <= waypoints.length; step++) {
+      final waypointIndex = (segmentIndex + step) % waypoints.length;
+      final waypoint = waypoints[waypointIndex];
+      final currentPoint = LatLng(waypoint.latitude, waypoint.longitude);
+
+      totalDistance += getDistanceFromLatLonInM(
+        previousPoint.latitude,
+        previousPoint.longitude,
+        currentPoint.latitude,
+        currentPoint.longitude,
+      );
+
+      if (waypoint.isStop && (waypoint.stopName?.trim().isNotEmpty ?? false)) {
+        stopsAway++;
+      }
+
+      if (waypointIndex == targetWaypointIndex) {
+        break;
+      }
+
+      previousPoint = currentPoint;
+    }
+
+    return (
+      distanceM: totalDistance,
+      stopsAway: stopsAway,
+    );
+  }
+
+  BusArrivalDetails? _buildArrivalDetailsForBus(
+    Bus bus,
+    BusRoute route,
+    LatLng userLocation,
+  ) {
+    if (bus.currentLat == null || bus.currentLon == null) {
+      return null;
+    }
+
+    final busPoint = LatLng(bus.currentLat!, bus.currentLon!);
+    final nextStop = _resolveStableNextStopForBus(route, bus, busPoint);
+    final target = _findNearestStopOnRoute(route, userLocation);
+    if (target == null) {
+      return null;
+    }
+
+    final routeMeasure =
+        _measureRouteToWaypoint(route, busPoint, target.waypointIndex);
+
+    return BusArrivalDetails(
+      nextStop: nextStop,
+      targetStop: target.stop,
+      targetWaypointIndex: target.waypointIndex,
+      etaMinutes: _estimateEtaMinutes(routeMeasure.distanceM),
+      distanceM: routeMeasure.distanceM.round(),
+      stopsAway: routeMeasure.stopsAway,
+      walkingDistanceM: target.walkingDistanceM,
+    );
+  }
+
   List<Waypoint> _nextStopsForBus(
     BusRoute route,
     Bus bus, {
@@ -1649,8 +1855,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Widget _buildBusInfoSheet({
     required Bus bus,
     required BusRoute? route,
-    required List<Waypoint> nextStops,
+    required String nextStopName,
     required int? etaToUser,
+    required int? stopsAway,
   }) {
     if (bus.isOffline) {
       return ConstrainedBox(
@@ -1752,9 +1959,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
     }
 
-    final nextStopName =
-        nextStops.isNotEmpty ? nextStops.first.stopName ?? '-' : '-';
-
     return ConstrainedBox(
       constraints: const BoxConstraints(
         maxWidth: _selectedBusDockMaxWidth,
@@ -1831,8 +2035,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ),
                     Expanded(
                       child: _buildInfoStat(
-                        'ON BOARD',
-                        '${bus.personCount ?? 0}',
+                        'STOPS AWAY',
+                        stopsAway != null ? '$stopsAway' : '-',
                         CrossAxisAlignment.end,
                       ),
                     ),
@@ -1896,20 +2100,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
 
     final route = _resolveRouteForBus(bus, routes);
-    final nextStops =
-        route != null ? _nextStopsForBus(route, bus, count: 5) : <Waypoint>[];
-    final etaToUser = _userLocation != null &&
-            bus.currentLat != null &&
-            bus.currentLon != null
-        ? _estimateEtaMinutes(
-            getDistanceFromLatLonInM(
-              bus.currentLat!,
-              bus.currentLon!,
-              _userLocation!.latitude,
-              _userLocation!.longitude,
-            ),
+    final arrivalDetails = route != null && _userLocation != null
+        ? _buildArrivalDetailsForBus(
+            bus,
+            route,
+            LatLng(_userLocation!.latitude, _userLocation!.longitude),
           )
         : null;
+    final nextStopName = arrivalDetails?.nextStop?.stopName ??
+        (route != null
+            ? _nextStopsForBus(route, bus, count: 1).firstOrNull?.stopName ?? '-'
+            : '-');
 
     return Positioned(
       left: 16,
@@ -1922,8 +2123,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           child: _buildBusInfoSheet(
             bus: bus,
             route: route,
-            nextStops: nextStops,
-            etaToUser: etaToUser,
+            nextStopName: nextStopName,
+            etaToUser: arrivalDetails?.etaMinutes,
+            stopsAway: arrivalDetails?.stopsAway,
           ),
         ),
       ),
@@ -1955,8 +2157,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       onlineNearbyCandidateBuses,
       routes,
     );
+    final displayBusRoute =
+        displayBus != null ? _resolveRouteForBus(displayBus.bus, routes) : null;
+    final displayBusArrival =
+        displayBus != null && displayBusRoute != null
+            ? _buildArrivalDetailsForBus(
+                displayBus.bus,
+                displayBusRoute,
+                LatLng(_userLocation!.latitude, _userLocation!.longitude),
+              )
+            : null;
     final incomingBuses = calculateIncomingBuses(
-        nearest.stop, onlineNearbyCandidateBuses, routes);
+      displayBusArrival?.targetStop ?? nearest.stop,
+      onlineNearbyCandidateBuses,
+      routes,
+    );
     final ridingBus = _ridingBusMac == null
         ? null
         : buses.where((bus) => bus.busMac == _ridingBusMac).firstOrNull;
@@ -2094,7 +2309,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               shouldShowOfflineState
                                   ? 'OFFLINE'
                                   : _ridingBusMac == null
-                                      ? '${nearest.distance.round()}m'
+                                      ? '${displayBusArrival?.stopsAway ?? 0}'
                                       : '${nextStop?.etaMinutes ?? 0} min',
                               style: TextStyle(
                                 fontSize: 12,
@@ -2111,7 +2326,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           shouldShowOfflineState
                               ? 'Status'
                               : _ridingBusMac == null
-                                  ? 'Station'
+                                  ? 'Stops'
                                   : 'ETA',
                           style: const TextStyle(
                             fontSize: 10,
@@ -2195,7 +2410,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           const SizedBox(height: 4),
                           Text(
                             _ridingBusMac == null
-                                ? (nearest.stop.stopName ?? '-')
+                                ? (displayBusArrival?.nextStop?.stopName ?? '-')
                                 : (actionBus != null
                                     ? '${actionBus.personCount ?? 0}/40'
                                     : '-'),
@@ -2231,8 +2446,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             shouldShowOfflineState
                                 ? '-'
                                 : _ridingBusMac == null
-                                    ? (displayBus != null
-                                        ? '${displayBus.etaMinutes} min'
+                                    ? (displayBusArrival != null
+                                        ? '${displayBusArrival.etaMinutes} min'
                                         : '-')
                                     : (ridingRoute?.routeName ?? '-'),
                             style: const TextStyle(
@@ -2626,6 +2841,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     )?.bus;
   }
 
+  bool _shouldShowBus(Bus bus, bool debugMode) {
+    if (bus.isDebugRouteDriverBus) {
+      return false;
+    }
+
+    return debugMode || !bus.isDebugBus;
+  }
+
   @override
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
@@ -2635,9 +2858,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final testMode = ref.watch(testModeProvider);
     _syncAnimatedBusPositions(buses, routes);
     final renderedBuses = buses.map(_renderedBus).toList();
-    final visibleRenderedBuses = debugMode
-        ? renderedBuses
-        : renderedBuses.where((bus) => !bus.isDebugBus).toList();
+    final visibleRenderedBuses =
+        renderedBuses.where((bus) => _shouldShowBus(bus, debugMode)).toList();
     final displayedBuses = _ridingBusMac == null
         ? visibleRenderedBuses
         : visibleRenderedBuses

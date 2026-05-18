@@ -22,6 +22,7 @@ BUS_ROUTE_MAPPING = {
     "lastUpdated": "2025-12-19T09:00:00+07:00",
     "mappings": [
         {
+            "bus_id": "SUT-BUS-01",
             "bus_mac": "28:56:2F:49:F7:00",
             "bus_name": "SUT-BUS-01",
             "route_id": "route_1765852937753_9hdm9wd76",

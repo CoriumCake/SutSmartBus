@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class DebugLocationUpdate(BaseModel):
+    bus_id: str | None = None
     bus_mac: str
     bus_name: str | None = None
     lat: float | None = None
@@ -45,6 +46,7 @@ async def upsert_debug_location(payload: DebugLocationUpdate):
 
     updated_bus = await crud.update_bus_location(
         mac_address=payload.bus_mac,
+        bus_id=payload.bus_id,
         bus_name=payload.bus_name,
         lat=lat,
         lon=lon,

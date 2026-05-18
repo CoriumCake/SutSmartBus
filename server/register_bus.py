@@ -5,13 +5,14 @@ import sys
 
 MONGODB_URL = "mongodb://localhost:27017/sut_smart_bus"
 
-async def register_bus(mac_address, bus_name):
+async def register_bus(mac_address, bus_name, bus_id=None):
     print(f"Connecting to MongoDB...")
     client = AsyncIOMotorClient(MONGODB_URL)
     db = client.get_database("sut_smart_bus")
     bus_collection = db.get_collection("buses")
 
     bus_data = {
+        "bus_id": bus_id or bus_name,
         "mac_address": mac_address,
         "bus_name": bus_name,
         "seats_available": 33,
@@ -34,6 +35,6 @@ async def register_bus(mac_address, bus_name):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python3 register_bus.py <MAC_ADDRESS> <BUS_NAME>")
+        print("Usage: python3 register_bus.py <MAC_ADDRESS> <BUS_NAME> [BUS_ID]")
         sys.exit(1)
-    asyncio.run(register_bus(sys.argv[1], sys.argv[2]))
+    asyncio.run(register_bus(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None))
