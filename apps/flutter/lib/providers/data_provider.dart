@@ -85,10 +85,10 @@ class DataState {
 class DataNotifier extends StateNotifier<DataState> {
   final ApiService _api;
   final MqttService _mqtt;
-  final Random _random = Random();
   Timer? _pollingTimer;
   Timer? _presenceTimer;
   Map<String, String> _busRouteMappings = {};
+  final Map<String, Map<String, bool>> _componentOnlineByBus = {};
 
   DataNotifier(this._api, this._mqtt) : super(DataState()) {
     _initialize();
@@ -192,12 +192,16 @@ class DataNotifier extends StateNotifier<DataState> {
     if (mappings is List) {
       for (final entry in mappings) {
         if (entry is! Map) continue;
+        final mappedBusId = entry['bus_id']?.toString();
         final busMac = entry['bus_mac']?.toString();
         final routeId = entry['route_id']?.toString();
-        if (busMac != null &&
-            busMac.isNotEmpty &&
-            routeId != null &&
-            routeId.isNotEmpty) {
+        if (routeId == null || routeId.isEmpty) {
+          continue;
+        }
+        if (mappedBusId != null && mappedBusId.isNotEmpty) {
+          remoteMappings[mappedBusId] = routeId;
+        }
+        if (busMac != null && busMac.isNotEmpty) {
           remoteMappings[busMac] = routeId;
         }
       }
@@ -236,7 +240,8 @@ class DataNotifier extends StateNotifier<DataState> {
       return bus;
     }
 
-    final mappedRouteId = _busRouteMappings[bus.busMac] ??
+    final mappedRouteId = (bus.busId != null ? _busRouteMappings[bus.busId!] : null) ??
+        _busRouteMappings[bus.busMac] ??
         (bus.macAddress != null ? _busRouteMappings[bus.macAddress!] : null);
 
     if (mappedRouteId == null || mappedRouteId.isEmpty) {
@@ -252,11 +257,24 @@ class DataNotifier extends StateNotifier<DataState> {
     return normalized.isEmpty || normalized == '00:00:00:00:00:00';
   }
 
+  bool _isInvalidBusId(String? busId) {
+    return busId == null || busId.trim().isEmpty;
+  }
+
   int _findBusIndexByIdentity(
     List<Bus> buses, {
+    String? busId,
     String? busMac,
     String? busName,
   }) {
+    final normalizedBusId = busId?.trim();
+    if (!_isInvalidBusId(normalizedBusId)) {
+      final idx = buses.indexWhere((b) => b.busId == normalizedBusId);
+      if (idx >= 0) return idx;
+      final fallbackIdx = buses.indexWhere((b) => b.id == normalizedBusId);
+      if (fallbackIdx >= 0) return fallbackIdx;
+    }
+
     if (!_isInvalidHardwareBusMac(busMac)) {
       final idx = buses.indexWhere((b) => b.busMac == busMac);
       if (idx >= 0) return idx;
@@ -270,12 +288,60 @@ class DataNotifier extends StateNotifier<DataState> {
     return -1;
   }
 
+  String? _presenceKeyForBus({
+    Bus? bus,
+    String? busId,
+    String? busMac,
+    String? busName,
+    String? topicBusId,
+  }) {
+    final normalizedBusId = bus?.busId?.trim();
+    if (normalizedBusId != null && normalizedBusId.isNotEmpty) {
+      return normalizedBusId;
+    }
+    final payloadBusId = busId?.trim();
+    if (payloadBusId != null && payloadBusId.isNotEmpty) {
+      return payloadBusId;
+    }
+    final busModelName = bus?.busName.trim();
+    if (busModelName != null && busModelName.isNotEmpty) {
+      return busModelName;
+    }
+    final normalizedName = busName?.trim();
+    if (normalizedName != null && normalizedName.isNotEmpty) {
+      return normalizedName;
+    }
+    if (bus != null) return bus.busMac;
+    if (!_isInvalidHardwareBusMac(busMac)) return busMac;
+    final normalizedTopicId = topicBusId?.trim();
+    if (normalizedTopicId != null && normalizedTopicId.isNotEmpty) {
+      return normalizedTopicId;
+    }
+    return null;
+  }
+
+  bool _recordComponentStatus(
+    String busKey,
+    String component,
+    bool isOnline,
+  ) {
+    final componentStates =
+        _componentOnlineByBus.putIfAbsent(busKey, () => <String, bool>{});
+    componentStates[component] = isOnline;
+    return !componentStates.values.any((status) => status == false);
+  }
+
   /// Smart merge: preserves MQTT real-time data, handles name protection
   List<Bus> _mergeBuses(List<Bus> existing, List<Bus> incoming) {
     final merged = [...existing];
 
     for (final apiBus in incoming) {
-      final idx = merged.indexWhere((b) => b.busMac == apiBus.busMac);
+      final idx = _findBusIndexByIdentity(
+        merged,
+        busId: apiBus.busId,
+        busMac: apiBus.busMac,
+        busName: apiBus.busName,
+      );
 
       if (idx >= 0) {
         final local = merged[idx];
@@ -292,7 +358,10 @@ class DataNotifier extends StateNotifier<DataState> {
         }
 
         if (localIsFresher) {
-          merged[idx] = _applyRouteMapping(local.copyWith(busName: finalName));
+          merged[idx] = _applyRouteMapping(local.copyWith(
+            busId: apiBus.busId ?? local.busId,
+            busName: finalName,
+          ));
         } else {
           merged[idx] = _applyRouteMapping(apiBus.copyWith(
             busName: finalName,
@@ -326,6 +395,7 @@ class DataNotifier extends StateNotifier<DataState> {
   }
 
   void _handleDoorCountUpdate(Map<String, dynamic> data) {
+    final busId = (data['bus_id'] as String?)?.trim();
     // If hardware doesn't send bus_mac, we default to the mock MAC
     // In a multi-bus system, hardware should be updated to send its MAC
     final busMac = data['bus_mac'] as String? ?? 'ESP32-CAM-01';
@@ -336,6 +406,7 @@ class DataNotifier extends StateNotifier<DataState> {
     final buses = [...state.buses];
     int idx = _findBusIndexByIdentity(
       buses,
+      busId: busId,
       busMac: busMac,
       busName: busName,
     );
@@ -347,6 +418,7 @@ class DataNotifier extends StateNotifier<DataState> {
         lon: buses[idx].currentLon,
       );
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
+        busId: busId ?? buses[idx].busId,
         busName: (busName != null && busName.isNotEmpty)
             ? busName
             : buses[idx].busName,
@@ -357,11 +429,14 @@ class DataNotifier extends StateNotifier<DataState> {
       ));
     } else if (buses.length < 50) {
       final normalizedCount = _normalizePassengerCount(count);
+      final effectiveBusId =
+          !_isInvalidBusId(busId) ? busId!.trim() : busMac;
       buses.add(_applyRouteMapping(Bus(
-        id: busMac,
+        id: effectiveBusId,
+        busId: !_isInvalidBusId(busId) ? busId!.trim() : null,
         busMac: busMac,
         busName: busName ??
-            'Bus-${busMac.length >= 4 ? busMac.substring(busMac.length - 4) : busMac}',
+            'Bus-${effectiveBusId.length >= 4 ? effectiveBusId.substring(effectiveBusId.length - 4) : effectiveBusId}',
         personCount: normalizedCount,
         seatsAvailable:
             (_totalBusCapacity - normalizedCount).clamp(0, _totalBusCapacity),
@@ -390,34 +465,12 @@ class DataNotifier extends StateNotifier<DataState> {
     state = state.copyWith(buses: buses);
   }
 
-  void randomizeOnlineBusTelemetry() {
-    var changed = false;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final buses = state.buses.map((bus) {
-      if (bus.isOffline) {
-        return bus;
-      }
-
-      changed = true;
-      return bus.copyWith(
-        pm25: 5 + _random.nextDouble() * 75,
-        pm10: 10 + _random.nextDouble() * 100,
-        temp: 24 + _random.nextDouble() * 12,
-        hum: 40 + _random.nextDouble() * 50,
-        isOnline: true,
-        lastUpdated: now,
-      );
-    }).toList();
-
-    if (changed) {
-      state = state.copyWith(buses: buses);
-    }
-  }
-
   void _handleLocationUpdate(Map<String, dynamic> data) {
+    final busId = (data['bus_id'] as String?)?.trim();
     final busMac = data['bus_mac'] as String?;
     final busName = (data['bus_name'] as String?)?.trim();
-    if (_isInvalidHardwareBusMac(busMac) &&
+    if (_isInvalidBusId(busId) &&
+        _isInvalidHardwareBusMac(busMac) &&
         (busName == null || busName.isEmpty)) {
       return;
     }
@@ -425,6 +478,7 @@ class DataNotifier extends StateNotifier<DataState> {
     final buses = [...state.buses];
     final idx = _findBusIndexByIdentity(
       buses,
+      busId: busId,
       busMac: busMac,
       busName: busName,
     );
@@ -441,6 +495,7 @@ class DataNotifier extends StateNotifier<DataState> {
           : _normalizePassengerCount(rawPersonCount,
               lat: nextLat, lon: nextLon);
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
+        busId: busId ?? buses[idx].busId,
         busName: busName?.isNotEmpty == true ? busName! : buses[idx].busName,
         currentLat: nextLat,
         currentLon: nextLon,
@@ -458,8 +513,9 @@ class DataNotifier extends StateNotifier<DataState> {
       ));
     } else if (buses.length < 50) {
       final effectiveBusMac = _isInvalidHardwareBusMac(busMac)
-          ? (busName ?? 'ESP32-CAM-01')
+          ? (busName ?? busId ?? 'ESP32-CAM-01')
           : busMac!;
+      final effectiveBusId = !_isInvalidBusId(busId) ? busId!.trim() : null;
       final nextLat = (data['lat'] as num?)?.toDouble();
       final nextLon = (data['lon'] as num?)?.toDouble();
       final normalizedPersonCount = (data['person_count'] as int?) == null
@@ -470,10 +526,11 @@ class DataNotifier extends StateNotifier<DataState> {
               lon: nextLon,
             );
       buses.add(_applyRouteMapping(Bus(
-        id: effectiveBusMac,
+        id: effectiveBusId ?? effectiveBusMac,
+        busId: effectiveBusId,
         busMac: effectiveBusMac,
         busName: busName ??
-            'Bus-${effectiveBusMac.length >= 4 ? effectiveBusMac.substring(effectiveBusMac.length - 4) : ''}',
+            'Bus-${(effectiveBusId ?? effectiveBusMac).length >= 4 ? (effectiveBusId ?? effectiveBusMac).substring((effectiveBusId ?? effectiveBusMac).length - 4) : ''}',
         currentLat: nextLat,
         currentLon: nextLon,
         pm25: (data['pm2_5'] as num?)?.toDouble(),
@@ -493,9 +550,11 @@ class DataNotifier extends StateNotifier<DataState> {
   }
 
   void _handleFastGpsUpdate(Map<String, dynamic> data) {
+    final busId = (data['bus_id'] as String?)?.trim();
     final busMac = data['bus_mac'] as String?;
     final busName = (data['bus_name'] as String?)?.trim();
-    if ((_isInvalidHardwareBusMac(busMac) &&
+    if ((_isInvalidBusId(busId) &&
+            _isInvalidHardwareBusMac(busMac) &&
             (busName == null || busName.isEmpty)) ||
         data['lat'] == null ||
         data['lon'] == null) {
@@ -505,24 +564,28 @@ class DataNotifier extends StateNotifier<DataState> {
     final buses = [...state.buses];
     final idx = _findBusIndexByIdentity(
       buses,
+      busId: busId,
       busMac: busMac,
       busName: busName,
     );
     if (idx >= 0) {
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
+        busId: busId ?? buses[idx].busId,
         currentLat: (data['lat'] as num).toDouble(),
         currentLon: (data['lon'] as num).toDouble(),
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       ));
     } else if (buses.length < 50) {
       final effectiveBusMac = _isInvalidHardwareBusMac(busMac)
-          ? (busName ?? 'ESP32-CAM-01')
+          ? (busName ?? busId ?? 'ESP32-CAM-01')
           : busMac!;
+      final effectiveBusId = !_isInvalidBusId(busId) ? busId!.trim() : null;
       buses.add(_applyRouteMapping(Bus(
-        id: effectiveBusMac,
+        id: effectiveBusId ?? effectiveBusMac,
+        busId: effectiveBusId,
         busMac: effectiveBusMac,
         busName: busName ??
-            'Bus-${effectiveBusMac.length >= 4 ? effectiveBusMac.substring(effectiveBusMac.length - 4) : ''}',
+            'Bus-${(effectiveBusId ?? effectiveBusMac).length >= 4 ? (effectiveBusId ?? effectiveBusMac).substring((effectiveBusId ?? effectiveBusMac).length - 4) : ''}',
         currentLat: (data['lat'] as num).toDouble(),
         currentLon: (data['lon'] as num).toDouble(),
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
@@ -534,10 +597,34 @@ class DataNotifier extends StateNotifier<DataState> {
   void _handleStatusUpdate(String topic, Map<String, dynamic> data) {
     final parts = topic.split('/');
     if (parts.length < 4) return; // sut/bus/<MAC>/status
-    final busId = parts[2];
+    final topicIdentity = parts[2];
+    final payloadBusId = (data['bus_id'] as String?)?.trim();
+    final statusBusMac = data['bus_mac']?.toString();
+    final statusBusName = (data['bus_name'] as String?)?.trim();
+    final componentName = data['component']?.toString().trim().toLowerCase();
+    final component =
+        (componentName != null && componentName.isNotEmpty)
+            ? componentName
+            : 'device';
+    final statusIsOnline = data['is_online'] != false;
 
     final buses = [...state.buses];
-    final idx = buses.indexWhere((b) => b.busMac == busId || b.id == busId);
+    final idx = _findBusIndexByIdentity(
+      buses,
+      busId: payloadBusId,
+      busMac: statusBusMac ?? topicIdentity,
+      busName: statusBusName,
+    );
+    final presenceKey = _presenceKeyForBus(
+      bus: idx >= 0 ? buses[idx] : null,
+      busId: payloadBusId,
+      busMac: statusBusMac ?? topicIdentity,
+      busName: statusBusName,
+      topicBusId: topicIdentity,
+    );
+    final combinedOnline = presenceKey == null
+        ? statusIsOnline
+        : _recordComponentStatus(presenceKey, component, statusIsOnline);
 
     int? count = data['count'] as int?;
     final rawPersonCount = data['person_count'] as int? ?? count;
@@ -555,9 +642,12 @@ class DataNotifier extends StateNotifier<DataState> {
               .clamp(0, _totalBusCapacity)
           : null;
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
-        busName: data['bus_name'] as String? ?? buses[idx].busName,
+        busId: payloadBusId ?? buses[idx].busId,
+        busName: statusBusName?.isNotEmpty == true
+            ? statusBusName!
+            : buses[idx].busName,
         rssi: _normalizeRssi(data['rssi']),
-        isOnline: true,
+        isOnline: combinedOnline,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
         personCount: normalizedPersonCount ?? buses[idx].personCount,
         seatsAvailable: seatsAvailable ?? buses[idx].seatsAvailable,
@@ -570,13 +660,16 @@ class DataNotifier extends StateNotifier<DataState> {
           ? (_totalBusCapacity - normalizedPersonCount)
               .clamp(0, _totalBusCapacity)
           : null;
+      final effectiveBusId =
+          !_isInvalidBusId(payloadBusId) ? payloadBusId!.trim() : null;
       buses.add(_applyRouteMapping(Bus(
-        id: busId,
-        busMac: busId,
-        busName: data['bus_name'] as String? ??
-            'Bus-${busId.length >= 4 ? busId.substring(busId.length - 4) : busId}',
+        id: effectiveBusId ?? topicIdentity,
+        busId: effectiveBusId,
+        busMac: statusBusMac ?? topicIdentity,
+        busName: statusBusName ??
+            'Bus-${(effectiveBusId ?? topicIdentity).length >= 4 ? (effectiveBusId ?? topicIdentity).substring((effectiveBusId ?? topicIdentity).length - 4) : (effectiveBusId ?? topicIdentity)}',
         rssi: _normalizeRssi(data['rssi']),
-        isOnline: true,
+        isOnline: combinedOnline,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
         personCount: normalizedPersonCount,
         seatsAvailable: seatsAvailable,

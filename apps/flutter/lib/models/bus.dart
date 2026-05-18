@@ -1,6 +1,7 @@
 class Bus {
   static const int maxPassengerCount = 40;
   final String id;
+  final String? busId;
   final String busMac;
   final String? macAddress;
   final String busName;
@@ -20,6 +21,7 @@ class Bus {
 
   Bus({
     required this.id,
+    this.busId,
     required this.busMac,
     this.macAddress,
     required this.busName,
@@ -39,6 +41,7 @@ class Bus {
   });
 
   bool get isOffline =>
+      isOnline == false ||
       (DateTime.now().millisecondsSinceEpoch - lastUpdated) > 60000;
 
   bool get isDebugBus {
@@ -51,6 +54,16 @@ class Bus {
         normalizedName.contains('DEBUG') ||
         normalizedName.contains('(TEST)') ||
         (normalizedAddress?.startsWith('DEBUG-') ?? false);
+  }
+
+  bool get isDebugRouteDriverBus {
+    final normalizedName = busName.toUpperCase();
+    final normalizedMac = busMac.toUpperCase();
+    final normalizedAddress = macAddress?.toUpperCase();
+
+    return normalizedMac == 'DEBUG-MAC-01' ||
+        normalizedAddress == 'DEBUG-MAC-01' ||
+        normalizedName.contains('DEBUG ROUTE DRIVER');
   }
 
   static int _parseLastUpdated(dynamic value) {
@@ -92,9 +105,12 @@ class Bus {
     // Server uses mac_address as the primary key for devices
     final mac =
         json['mac_address'] ?? json['bus_mac'] ?? json['id']?.toString() ?? '';
+    final busId = json['bus_id']?.toString().trim();
+    final effectiveId = (busId != null && busId.isNotEmpty) ? busId : mac;
 
     return Bus(
-      id: mac,
+      id: effectiveId,
+      busId: busId != null && busId.isNotEmpty ? busId : null,
       busMac: mac,
       macAddress: json['mac_address'],
       busName: json['bus_name'] ??
@@ -114,6 +130,8 @@ class Bus {
   }
 
   Bus copyWith({
+    String? id,
+    String? busId,
     String? busName,
     double? currentLat,
     double? currentLon,
@@ -128,8 +146,12 @@ class Bus {
     String? routeId,
     int? personCount,
   }) {
+    final nextBusId = busId ?? this.busId;
+    final nextId = id ??
+        ((nextBusId != null && nextBusId.isNotEmpty) ? nextBusId : this.id);
     return Bus(
-      id: id,
+      id: nextId,
+      busId: busId ?? this.busId,
       busMac: busMac,
       macAddress: macAddress,
       busName: busName ?? this.busName,

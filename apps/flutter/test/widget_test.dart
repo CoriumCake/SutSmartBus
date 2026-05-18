@@ -19,8 +19,17 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
 
+    expect(find.text('ข้อกำหนดการใช้บริการ'), findsOneWidget);
+    expect(find.text('ยอมรับข้อกำหนด'), findsOneWidget);
+    expect(find.text('ปฏิเสธ'), findsOneWidget);
+    expect(find.text('Step 1 of 2'), findsNothing);
+    expect(find.text('Read the Terms of Service to continue.'), findsNothing);
+    expect(find.textContaining('Effective date'), findsNothing);
+
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+
     expect(find.text('Terms of Service'), findsOneWidget);
     expect(find.text('Accept Terms'), findsOneWidget);
-    expect(find.text('Decline'), findsOneWidget);
   });
 }

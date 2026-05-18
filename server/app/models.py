@@ -28,6 +28,7 @@ class MongoBaseModel(BaseModel):
         populate_by_name = True
 
 class Bus(MongoBaseModel):
+    bus_id: Optional[str] = None
     bus_name: Optional[str] = None
     route_id: Optional[str] = None
     current_lat: Optional[float] = None

@@ -7,6 +7,7 @@ PyObjectId = Annotated[str, BeforeValidator(str)]
 
 # --- Bus Schemas ---
 class BusBase(BaseModel):
+    bus_id: Optional[str] = None
     bus_name: Optional[str] = None
     current_lat: float
     current_lon: float
@@ -32,6 +33,7 @@ class Bus(BusBase):
 
 # Schema for incoming bus location updates from hardware
 class BusLocation(BaseModel):
+    bus_id: Optional[str] = None
     bus_mac: str
     bus_name: Optional[str] = None
     lat: Optional[float] = None
@@ -97,6 +99,7 @@ class Route(RouteBase):
         from_attributes = True
 
 class RouteMapping(BaseModel):
+    bus_id: Optional[str] = None
     bus_mac: str
     bus_name: str
     route_id: str

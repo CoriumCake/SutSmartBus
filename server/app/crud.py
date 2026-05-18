@@ -57,6 +57,11 @@ async def get_bus_by_mac(mac_address: str):
         await bus_collection.find_one({"mac_address": mac_address})
     )
 
+async def get_bus_by_bus_id(bus_id: str):
+    return _serialize_mongo_document(
+        await bus_collection.find_one({"bus_id": bus_id})
+    )
+
 async def get_bus_by_name(bus_name: str):
     return _serialize_mongo_document(
         await bus_collection.find_one({"bus_name": bus_name})
@@ -113,6 +118,7 @@ async def update_bus_location(
     lat: float | None,
     lon: float | None,
     seats_available: int,
+    bus_id: str | None = None,
     pm2_5: float | None = None,
     pm10: float | None = None,
     bus_name: str = None,
@@ -128,6 +134,9 @@ async def update_bus_location(
     update_data = {
         "last_updated": datetime.now(timezone.utc)
     }
+
+    if bus_id:
+        update_data["bus_id"] = bus_id
 
     sensor_update = {
         "pm2_5": pm2_5,
