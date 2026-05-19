@@ -6,6 +6,7 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <esp_mac.h>
+#include <mbedtls/md.h>
 #include "time.h"
 #define CAMERA_MODEL_AI_THINKER
 #include "camera_pins.h"
@@ -69,6 +70,8 @@ uint8_t wifiNetworkIndex = 0;
 char mqttStatusTopic[96];
 char mqttStatusOnlinePayload[224];
 char mqttStatusOfflinePayload[224];
+char mqttRingTopic[96];
+unsigned long lastAcceptedRingTimestamp = 0;
 
 PsychicMqttClient mqttClient;
 Preferences preferences;
@@ -289,16 +292,81 @@ String extractJsonStringField(const String& message, const char* fieldName) {
   return message.substring(valueStart, valueEnd);
 }
 
+unsigned long extractJsonUnsignedField(const String& message, const char* fieldName) {
+  String marker = String("\"") + fieldName + "\":";
+  int valueStart = message.indexOf(marker);
+  if (valueStart < 0) return 0;
+  valueStart += marker.length();
+  while (valueStart < message.length() && message[valueStart] == ' ') {
+    valueStart++;
+  }
+  int valueEnd = valueStart;
+  while (valueEnd < message.length() && isDigit(message[valueEnd])) {
+    valueEnd++;
+  }
+  if (valueEnd <= valueStart) return 0;
+  return strtoul(message.substring(valueStart, valueEnd).c_str(), nullptr, 10);
+}
+
+const char* ringCommandSecret() {
+  if (strlen(RING_COMMAND_SECRET) > 0) {
+    return RING_COMMAND_SECRET;
+  }
+  return API_KEY;
+}
+
+String computeRingSignature(const char* busMac, unsigned long timestamp) {
+  const char* secret = ringCommandSecret();
+  if (secret == nullptr || strlen(secret) == 0) {
+    return "";
+  }
+
+  char payload[96];
+  snprintf(payload, sizeof(payload), "ring|%s|%lu", busMac, timestamp);
+
+  const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (mdInfo == nullptr) {
+    return "";
+  }
+
+  unsigned char digest[32];
+  if (mbedtls_md_hmac(
+        mdInfo,
+        reinterpret_cast<const unsigned char*>(secret),
+        strlen(secret),
+        reinterpret_cast<const unsigned char*>(payload),
+        strlen(payload),
+        digest) != 0) {
+    return "";
+  }
+
+  static const char kHex[] = "0123456789abcdef";
+  char hex[65];
+  for (size_t i = 0; i < sizeof(digest); i++) {
+    hex[(i * 2)] = kHex[(digest[i] >> 4) & 0x0F];
+    hex[(i * 2) + 1] = kHex[digest[i] & 0x0F];
+  }
+  hex[64] = '\0';
+  return String(hex);
+}
+
 void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
   String message = String(payload);
-  if (String(topic) == MQTT_TOPIC_RING) {
+  if (String(topic) == mqttRingTopic) {
     bool isRingCommand = message.indexOf("\"command\":\"ring\"") >= 0;
-    bool hasBusMac = message.indexOf("\"bus_mac\":\"") >= 0;
-    bool matchesBusMac = message.indexOf(String("\"bus_mac\":\"") + reported_bus_mac + "\"") >= 0 ||
-                         message.indexOf(String("\"bus_mac\":\"") + bus_mac + "\"") >= 0;
+    String targetBusMac = extractJsonStringField(message, "bus_mac");
+    unsigned long timestamp = extractJsonUnsignedField(message, "timestamp");
+    String signature = extractJsonStringField(message, "sig");
+    bool matchesBusMac = targetBusMac == reported_bus_mac || targetBusMac == bus_mac;
+    bool validTimestamp = timestamp > lastAcceptedRingTimestamp;
+    bool validSignature = signature.length() > 0 &&
+                          signature == computeRingSignature(targetBusMac.c_str(), timestamp);
 
-    if (isRingCommand && (!hasBusMac || matchesBusMac)) {
+    if (isRingCommand && matchesBusMac && validTimestamp && validSignature) {
+      lastAcceptedRingTimestamp = timestamp;
       ringPending = true;
+    } else {
+      Serial.println("⚠️ Ignored unsigned or replayed ring command.");
     }
     return;
   }
@@ -373,7 +441,7 @@ void setupMQTT() {
     mqttConnectAttempted = false;
     mqttNeedsStopBeforeReconnect = false;
     Serial.println("✅ MQTT Connected");
-    mqttClient.subscribe(MQTT_TOPIC_RING, 1);
+    mqttClient.subscribe(mqttRingTopic, 1);
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
     publishStatus();
   });
@@ -395,6 +463,7 @@ void setupMQTT() {
   mqttClient.setServer(mqttUri);
   mqttClient.setClientId(mqttClientId);
   snprintf(mqttStatusTopic, sizeof(mqttStatusTopic), "sut/bus/%s/status", reported_bus_mac);
+  snprintf(mqttRingTopic, sizeof(mqttRingTopic), "%s/%s/ring", MQTT_TOPIC_RING_PREFIX, reported_bus_mac);
   buildStatusPayload(true, mqttStatusOnlinePayload, sizeof(mqttStatusOnlinePayload));
   buildStatusPayload(false, mqttStatusOfflinePayload, sizeof(mqttStatusOfflinePayload));
   mqttClient.setWill(mqttStatusTopic, 1, true, mqttStatusOfflinePayload);

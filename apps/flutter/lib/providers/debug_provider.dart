@@ -1,5 +1,5 @@
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io' show Platform;
 
@@ -42,6 +42,8 @@ class DebugNotifier extends StateNotifier<DebugState> {
   }
 
   Future<void> _loadDeviceInfo() async {
+    if (kReleaseMode) return;
+
     final deviceInfo = DeviceInfoPlugin();
     String? deviceId;
 

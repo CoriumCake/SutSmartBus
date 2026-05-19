@@ -5,7 +5,7 @@ TOPIC_APP_LOCATION = "sut/app/bus/location"
 TOPIC_IR_TRIGGER = "sut/bus/ir/triggered"
 TOPIC_BUS_DOOR_COUNT = "bus/door/count"
 TOPIC_BUS_STATUS = "sut/bus/+/status"
-TOPIC_RING = "sut/bus/ring"
+TOPIC_RING_PREFIX = "sut/bus"
 TOPIC_OTA_ESP32_CAM = "sut/ota/esp32_cam"
 TOPIC_OTA_PM = "sut/ota/pm"
 
@@ -40,3 +40,7 @@ BUS_ROUTE_MAPPING = {
 }
 
 ROUTES_DIR = "routes"
+
+
+def ring_topic_for_bus(bus_mac: str) -> str:
+    return f"{TOPIC_RING_PREFIX}/{bus_mac}/ring"

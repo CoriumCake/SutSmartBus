@@ -425,6 +425,11 @@ def on_message(client, userdata, msg):
 client = mqtt.Client(client_id="sut-server", clean_session=True)
 client.on_connect = on_connect
 client.on_message = on_message
+if settings.MQTT_USERNAME:
+    client.username_pw_set(
+        username=settings.MQTT_USERNAME,
+        password=settings.MQTT_PASSWORD,
+    )
 
 def connect_mqtt():
     try:

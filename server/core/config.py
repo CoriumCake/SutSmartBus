@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     
     MQTT_BROKER_HOST: str = "localhost"
     MQTT_BROKER_PORT: int = 1883
+    MQTT_USERNAME: Optional[str] = None
+    MQTT_PASSWORD: Optional[str] = None
     
     # Timezone
     TZ: str = "Asia/Bangkok"
@@ -15,8 +17,10 @@ class Settings(BaseSettings):
     FIRMWARE_DIR: str = "firmware"
     
     # Security Settings
-    # If set, all API requests must include X-API-Key header
+    # If set, protected API requests must include X-API-Key header.
+    # Public mobile read/user endpoints remain unauthenticated.
     API_SECRET_KEY: Optional[str] = None
+    RING_COMMAND_SECRET: Optional[str] = None
     ADMIN_PASSWORD: str = "admin123"
     
     # Maximum firmware file size (2MB default - ESP32 typically < 1.5MB)

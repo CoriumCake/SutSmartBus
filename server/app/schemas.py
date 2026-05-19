@@ -54,6 +54,7 @@ class RideStartRequest(BaseModel):
     device_id: str
     user_lat: float
     user_lon: float
+    user_accuracy_m: Optional[float] = None
 
 
 class RideEndRequest(BaseModel):
@@ -72,6 +73,7 @@ class SecureRingRequest(BaseModel):
     device_id: str
     user_lat: float
     user_lon: float
+    user_accuracy_m: Optional[float] = None
 
 # --- Route Schemas ---
 class RouteBase(BaseModel):

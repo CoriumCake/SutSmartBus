@@ -6,6 +6,8 @@ import '../models/route_model.dart';
 
 class ApiService {
   late final Dio _dio;
+  bool get _canUsePrivilegedApi =>
+      !kReleaseMode || ApiConfig.headers.containsKey('X-API-Key');
 
   ApiService() {
     _dio = Dio(BaseOptions(
@@ -178,6 +180,8 @@ class ApiService {
   }
 
   Future<bool> syncRoute(BusRoute route) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
       final response = await _dio.post('/api/routes', data: route.toJson());
       return response.statusCode == 200 || response.statusCode == 201;
@@ -187,6 +191,8 @@ class ApiService {
   }
 
   Future<bool> deleteRoute(String routeId) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
       await _dio.delete('/api/routes/$routeId');
       return true;
@@ -198,6 +204,8 @@ class ApiService {
   // ─── Bus Management ──────────────────────────────
 
   Future<bool> createBus(String mac, String name) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
       await _dio.post('/api/buses', data: {
         'mac_address': mac,
@@ -213,6 +221,8 @@ class ApiService {
   }
 
   Future<bool> updateBus(String mac, String name) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
       await _dio.put('/api/buses/$mac', data: {'bus_name': name});
       return true;
@@ -222,6 +232,8 @@ class ApiService {
   }
 
   Future<bool> deleteBus(String mac) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
       await _dio.delete('/api/buses/$mac');
       return true;
@@ -287,6 +299,8 @@ class ApiService {
   }
 
   Future<void> sendFakeLocation(Map<String, dynamic> data) async {
+    if (!_canUsePrivilegedApi) return;
+
     try {
       await _dio.post('/api/debug/location', data: data);
     } catch (e) {
@@ -295,6 +309,8 @@ class ApiService {
   }
 
   Future<void> deleteFakeLocation(String busId) async {
+    if (!_canUsePrivilegedApi) return;
+
     try {
       await _dio.delete('/api/debug/location/$busId');
     } catch (e) {
@@ -317,6 +333,8 @@ class ApiService {
   }
 
   Future<bool> createPMZone(Map<String, dynamic> zoneData) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
       final response = await _dio.post('/api/pm_zones', data: zoneData);
       return response.statusCode == 200 || response.statusCode == 201;
@@ -327,8 +345,10 @@ class ApiService {
 
   Future<bool> updatePMZone(
       String zoneId, Map<String, dynamic> zoneData) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
-      final response = await _dio.put('/api/pm_zones/\$zoneId', data: zoneData);
+      final response = await _dio.put('/api/pm_zones/$zoneId', data: zoneData);
       return response.statusCode == 200;
     } catch (e) {
       return false;
@@ -336,8 +356,10 @@ class ApiService {
   }
 
   Future<bool> deletePMZone(String zoneId) async {
+    if (!_canUsePrivilegedApi) return false;
+
     try {
-      await _dio.delete('/api/pm_zones/\$zoneId');
+      await _dio.delete('/api/pm_zones/$zoneId');
       return true;
     } catch (e) {
       return false;

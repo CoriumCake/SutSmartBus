@@ -16,9 +16,8 @@ class LegalConsentState {
       : isLoading = true,
         hasAccepted = false;
 
-  const LegalConsentState.ready({required bool hasAccepted})
-      : isLoading = false,
-        hasAccepted = hasAccepted;
+  const LegalConsentState.ready({required this.hasAccepted})
+      : isLoading = false;
 }
 
 class LegalConsentNotifier extends StateNotifier<LegalConsentState> {

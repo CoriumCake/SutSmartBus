@@ -4,6 +4,14 @@ import 'dart:io'
 import 'env.dart';
 
 class ApiConfig {
+  static String get _normalizedMqttWebSocketPath {
+    final path = Env.mqttWebSocketPath.trim();
+    if (path.isEmpty || path == '/') {
+      return '';
+    }
+    return path.startsWith('/') ? path : '/$path';
+  }
+
   /// Base URL for HTTP API
   static String get baseUrl {
     if (Env.isTunnelMode) return Env.apiUrl;
@@ -23,12 +31,13 @@ class ApiConfig {
   /// MQTT WebSocket URL
   static String get mqttWsUrl {
     if (Env.isTunnelMode) {
+      final path = _normalizedMqttWebSocketPath;
       // Cloudflare Tunnel hostnames usually terminate TLS on 443,
       // so we only append a port when a non-default port is configured.
       if (Env.mqttWebSocketPort == 443) {
-        return 'wss://${Env.mqttBrokerHost}';
+        return 'wss://${Env.mqttBrokerHost}$path';
       }
-      return 'wss://${Env.mqttBrokerHost}:${Env.mqttWebSocketPort}';
+      return 'wss://${Env.mqttBrokerHost}:${Env.mqttWebSocketPort}$path';
     }
 
     String host =

@@ -7,10 +7,13 @@ from typing import Optional
 from app import crud
 from core.config import settings
 
-RIDE_START_MAX_DISTANCE_M = 25.0
-RIDE_RING_MAX_DISTANCE_M = 45.0
-RIDE_SESSION_DURATION = timedelta(hours=2)
-RIDE_RING_COOLDOWN = timedelta(seconds=20)
+RIDE_START_MAX_DISTANCE_M = 10.0
+RIDE_RING_MAX_DISTANCE_M = 18.0
+RIDE_GPS_ACCURACY_COMPENSATION_CAP_M = 15.0
+RIDE_SESSION_DURATION = timedelta(minutes=30)
+RIDE_RING_COOLDOWN = timedelta(seconds=30)
+RIDE_MIN_ACTIVE_BEFORE_RING = timedelta(seconds=15)
+RIDE_MAX_RINGS_PER_SESSION = 3
 
 
 class RideSessionError(Exception):
@@ -92,6 +95,15 @@ def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return earth_radius_m * c
 
 
+def _effective_distance_m(distance_m: float, user_accuracy_m: Optional[float]) -> float:
+    if user_accuracy_m is None:
+        return distance_m
+    return max(
+        0.0,
+        distance_m - min(max(user_accuracy_m, 0.0), RIDE_GPS_ACCURACY_COMPENSATION_CAP_M),
+    )
+
+
 def _session_from_row(row: sqlite3.Row) -> RideSession:
     return RideSession(
         session_id=row["session_id"],
@@ -124,15 +136,19 @@ async def start_ride_session(
     bus_mac: str,
     user_lat: float,
     user_lon: float,
+    user_accuracy_m: Optional[float] = None,
 ) -> RideSession:
     bus = await _get_bus_or_raise(bus_mac)
+    if int(bus.get("person_count") or 0) <= 0:
+        raise RideSessionForbiddenError("Cannot start a ride while the bus is empty")
     distance = _distance_m(
         user_lat,
         user_lon,
         float(bus["current_lat"]),
         float(bus["current_lon"]),
     )
-    if distance > RIDE_START_MAX_DISTANCE_M:
+    effective_distance = _effective_distance_m(distance, user_accuracy_m)
+    if effective_distance > RIDE_START_MAX_DISTANCE_M:
         raise RideSessionForbiddenError("You must be near the bus to start a ride")
 
     now = _utc_now()
@@ -219,6 +235,7 @@ async def verify_session_for_ring(
     bus_mac: str,
     user_lat: float,
     user_lon: float,
+    user_accuracy_m: Optional[float] = None,
 ) -> RideSession:
     session = get_active_ride_session(session_id=session_id, device_id=device_id)
     if session is None:
@@ -233,13 +250,19 @@ async def verify_session_for_ring(
         float(bus["current_lat"]),
         float(bus["current_lon"]),
     )
-    if distance > RIDE_RING_MAX_DISTANCE_M:
+    effective_distance = _effective_distance_m(distance, user_accuracy_m)
+    if effective_distance > RIDE_RING_MAX_DISTANCE_M:
         raise RideSessionForbiddenError("You must stay near the bus to ring")
 
     now = _utc_now()
+    started_at = _parse_utc(session.started_at)
     last_ring_at = _parse_utc(session.last_ring_at)
+    if started_at is None or now - started_at < RIDE_MIN_ACTIVE_BEFORE_RING:
+        raise RideSessionForbiddenError("Please wait briefly after boarding before ringing")
     if last_ring_at is not None and now - last_ring_at < RIDE_RING_COOLDOWN:
         raise RideSessionRateLimitError("Bell already sent recently")
+    if session.ring_count >= RIDE_MAX_RINGS_PER_SESSION:
+        raise RideSessionRateLimitError("Bell limit reached for this ride")
 
     with _connect() as conn:
         conn.execute(

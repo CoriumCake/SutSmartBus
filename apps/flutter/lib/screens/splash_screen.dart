@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/legal_consent_provider.dart';
@@ -86,7 +85,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    const backgroundColor = Color(0xFFfa5f00);
+    const backgroundColor = Color(0xFFF26522);
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -102,22 +101,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   'assets/images/bus_icon.png', // Using the new logo
                   width: 200,
                   height: 200,
-                ),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                height: 80,
-                child: TextLiquidFill(
-                  text: 'SUT SMART BUS',
-                  waveColor: Colors.white,
-                  boxBackgroundColor: backgroundColor,
-                  textStyle: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                  ),
-                  loadDuration: const Duration(seconds: 3),
-                  waveDuration: const Duration(milliseconds: 800),
                 ),
               ),
             ],

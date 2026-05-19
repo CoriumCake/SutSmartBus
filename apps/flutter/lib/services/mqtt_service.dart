@@ -47,23 +47,46 @@ class MqttService {
 
       final wsUrl = ApiConfig.mqttWsUrl;
       final uri = Uri.parse(wsUrl);
+      final effectivePort = uri.hasPort
+          ? uri.port
+          : (uri.scheme == 'wss' || uri.scheme == 'https' ? 443 : 80);
       final clientIdentifier =
           'sut_smart_bus_flutter_${DateTime.now().millisecondsSinceEpoch}';
 
       // Use the platform-agnostic factory
-      final client = getMqttClient(wsUrl, clientIdentifier, uri.port,
+      final client = getMqttClient(wsUrl, clientIdentifier, effectivePort,
           useWebSocket: true, secure: uri.scheme == 'wss');
 
       _client = client
         ..keepAlivePeriod = 30
         ..autoReconnect = true
         ..resubscribeOnAutoReconnect = true
+        // Many hosted MQTT-over-WebSocket brokers expect the explicit `mqtt`
+        // subprotocol during the WS handshake.
+        ..websocketProtocols = MqttClientConstants.protocolsSingleDefault
         ..logging(on: false)
         ..onConnected = _onConnected
         ..onDisconnected = _onDisconnected;
 
+      _client!.connectionMessage = MqttConnectMessage()
+          .withClientIdentifier(clientIdentifier)
+          .startClean();
+
       _statusController.add(MqttConnectionState.connecting);
+      if (kDebugMode) {
+        print(
+          '[MqttService] Connecting to $wsUrl '
+          '(scheme=${uri.scheme}, host=${uri.host}, port=$effectivePort, path=${uri.path})',
+        );
+      }
       await _client!.connect();
+      if (kDebugMode && _client!.connectionStatus != null) {
+        print(
+          '[MqttService] Connect result: '
+          '${_client!.connectionStatus!.state} '
+          'code=${_client!.connectionStatus!.returnCode}',
+        );
+      }
     } catch (e) {
       if (kDebugMode) {
         print('[MqttService] Connection error: $e');
@@ -110,7 +133,11 @@ class MqttService {
 
   void _onDisconnected() {
     if (kDebugMode) {
-      print('[MqttService] Disconnected from MQTT Broker');
+      final status = _client?.connectionStatus;
+      print(
+        '[MqttService] Disconnected from MQTT Broker '
+        '(state=${status?.state}, code=${status?.returnCode})',
+      );
     }
     _statusController.add(MqttConnectionState.disconnected);
   }

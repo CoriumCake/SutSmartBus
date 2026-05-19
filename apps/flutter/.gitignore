@@ -55,6 +55,4 @@ GoogleService-Info.plist
 
 # Local Environment
 .env*
-lib/config/env.dart
-!lib/config/env.dart.example
 dart_tool/

@@ -422,6 +422,7 @@ class DataNotifier extends StateNotifier<DataState> {
         busName: (busName != null && busName.isNotEmpty)
             ? busName
             : buses[idx].busName,
+        isOnline: true,
         personCount: normalizedCount,
         seatsAvailable:
             (_totalBusCapacity - normalizedCount).clamp(0, _totalBusCapacity),
@@ -437,6 +438,7 @@ class DataNotifier extends StateNotifier<DataState> {
         busMac: busMac,
         busName: busName ??
             'Bus-${effectiveBusId.length >= 4 ? effectiveBusId.substring(effectiveBusId.length - 4) : effectiveBusId}',
+        isOnline: true,
         personCount: normalizedCount,
         seatsAvailable:
             (_totalBusCapacity - normalizedCount).clamp(0, _totalBusCapacity),
@@ -499,6 +501,7 @@ class DataNotifier extends StateNotifier<DataState> {
         busName: busName?.isNotEmpty == true ? busName! : buses[idx].busName,
         currentLat: nextLat,
         currentLon: nextLon,
+        isOnline: true,
         seatsAvailable: normalizedPersonCount != null
             ? (_totalBusCapacity - normalizedPersonCount)
                 .clamp(0, _totalBusCapacity)
@@ -538,6 +541,7 @@ class DataNotifier extends StateNotifier<DataState> {
         temp: (data['temp'] as num?)?.toDouble(),
         hum: (data['hum'] as num?)?.toDouble(),
         rssi: _normalizeRssi(data['rssi']),
+        isOnline: true,
         personCount: normalizedPersonCount,
         seatsAvailable: normalizedPersonCount != null
             ? (_totalBusCapacity - normalizedPersonCount)
@@ -573,6 +577,7 @@ class DataNotifier extends StateNotifier<DataState> {
         busId: busId ?? buses[idx].busId,
         currentLat: (data['lat'] as num).toDouble(),
         currentLon: (data['lon'] as num).toDouble(),
+        isOnline: true,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       ));
     } else if (buses.length < 50) {
@@ -588,6 +593,7 @@ class DataNotifier extends StateNotifier<DataState> {
             'Bus-${(effectiveBusId ?? effectiveBusMac).length >= 4 ? (effectiveBusId ?? effectiveBusMac).substring((effectiveBusId ?? effectiveBusMac).length - 4) : ''}',
         currentLat: (data['lat'] as num).toDouble(),
         currentLon: (data['lon'] as num).toDouble(),
+        isOnline: true,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       )));
     }
