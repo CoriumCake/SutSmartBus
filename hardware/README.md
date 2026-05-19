@@ -22,6 +22,9 @@ Helper sketch used during device registration.
 
 1. Edit `config.h` with Wi-Fi and MQTT settings.
 2. Upload with the `AI-Thinker ESP32-CAM` board profile.
+3. For the app ring button, make sure `RING_COMMAND_SECRET` matches the
+   backend `RING_COMMAND_SECRET` or `API_SECRET_KEY`, and set `BUS_MAC_ALIAS`
+   to the same logical bus MAC used by the app/backend bus mapping.
 
 ### PM Sensor
 

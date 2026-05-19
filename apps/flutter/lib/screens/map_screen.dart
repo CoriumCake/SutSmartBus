@@ -109,6 +109,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   BusRoute? _activeRoute;
   String? _activeBusMac;
   String? _selectedInfoBusMac;
+  String? _selectedStopKey;
+  String? _selectedStopRouteId;
+  int? _selectedStopRouteIndex;
   String? _rideReadyBusMac;
   String? _ridingBusMac;
   DateTime? _rideReadySince;
@@ -490,12 +493,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     if (_ridingBusMac != null) {
       setState(() {
         _selectedInfoBusMac = null;
+        _selectedStopKey = null;
+        _selectedStopRouteId = null;
+        _selectedStopRouteIndex = null;
       });
       return;
     }
 
     setState(() {
       _selectedInfoBusMac = null;
+      _selectedStopKey = null;
+      _selectedStopRouteId = null;
+      _selectedStopRouteIndex = null;
       _activeBusMac = null;
       _activeRoute = null;
     });
@@ -930,6 +939,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           _currentStopIndex = calculateNextStopIndex(
             route,
             LatLng(busInfo.bus.currentLat!, busInfo.bus.currentLon!),
+            bus: busInfo.bus,
           );
         }
       });
@@ -1128,105 +1138,63 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     BusRoute? focusedRoute,
     int? nextStopIndex,
   }) {
-    final routesToShow = focusedRoute != null ? [focusedRoute] : allRoutes;
-
-    return routesToShow.expand((route) {
+    return allRoutes.expand((route) {
       return route.stops.asMap().entries.map((entry) {
         final i = entry.key;
         final stop = entry.value;
+        final stopKey = _stopMarkerKey(route, stop, i);
+        final isSelectedStop = _selectedStopKey == stopKey;
         final isFocusedStopSet =
             focusedRoute != null && route.routeId == focusedRoute.routeId;
         final isNext = isFocusedStopSet && i == nextStopIndex;
+        final selectedFocusStopIndex = isFocusedStopSet &&
+                _selectedStopRouteId == route.routeId &&
+                _selectedStopRouteIndex != null &&
+                nextStopIndex != null &&
+                _selectedStopRouteIndex! >= nextStopIndex
+            ? _selectedStopRouteIndex
+            : null;
+        final focusedWindowEndExclusive = selectedFocusStopIndex != null
+            ? selectedFocusStopIndex + 1
+            : (nextStopIndex != null ? nextStopIndex + 5 : null);
         final focusedOffsetIndex =
             nextStopIndex != null ? i - nextStopIndex : -1;
         final isPassed =
             isFocusedStopSet && nextStopIndex != null && i < nextStopIndex;
-        final isUpcomingWithinFive = isFocusedStopSet &&
+        final isUpcomingWithinFocusWindow = isFocusedStopSet &&
             nextStopIndex != null &&
+            focusedWindowEndExclusive != null &&
             i >= nextStopIndex &&
-            i < nextStopIndex + 5;
-        final isBeyondUpcomingWindow =
-            isFocusedStopSet && nextStopIndex != null && i >= nextStopIndex + 5;
-        final shouldShowFocusedLabel = isUpcomingWithinFive;
-        final markerFillColor = isPassed || isNext
-            ? _mapAccent
-            : isBeyondUpcomingWindow
-                ? const Color(0xFFE2E8F0)
-                : Colors.white;
+            i < focusedWindowEndExclusive;
+        final shouldShowLabel = isUpcomingWithinFocusWindow || isSelectedStop;
+        final markerFillColor = isPassed ? _mapAccent : Colors.white;
         final markerBorderColor =
-            isBeyondUpcomingWindow ? const Color(0xFFCBD5E1) : _mapAccent;
+            isFocusedStopSet ? _mapAccent : const Color(0xFFD1D5DB);
 
         return Marker(
           point: LatLng(stop.latitude, stop.longitude),
-          width: shouldShowFocusedLabel ? 92 : 12,
-          height: shouldShowFocusedLabel ? 34 : 12,
-          child: shouldShowFocusedLabel
-              ? Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Align(
-                      alignment: Alignment.center,
-                      child: Container(
-                        width: 12,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: markerFillColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: markerBorderColor,
-                            width: 2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 4,
-                                spreadRadius: 1),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: focusedOffsetIndex.isEven ? -6 : 16,
-                      left: focusedOffsetIndex.isEven ? 14 : null,
-                      right: focusedOffsetIndex.isEven ? null : 14,
-                      child: Container(
-                        constraints: const BoxConstraints(maxWidth: 76),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.96),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: isNext
-                                ? _mapAccent.withValues(alpha: 0.28)
-                                : const Color(0xFFE2E8F0),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.06),
-                              blurRadius: 4,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          stop.stopName ?? 'Stop',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 9,
-                            height: 1.1,
-                            fontWeight:
-                                isNext ? FontWeight.w800 : FontWeight.w600,
-                            color:
-                                isNext ? _mapAccent : const Color(0xFF475569),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              : Container(
+          width: shouldShowLabel ? 104 : 34,
+          height: shouldShowLabel ? 44 : 34,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              setState(() {
+                _selectedStopKey = stopKey;
+                _selectedStopRouteId = route.routeId;
+                _selectedStopRouteIndex = isFocusedStopSet &&
+                        nextStopIndex != null &&
+                        i >= nextStopIndex
+                    ? i
+                    : null;
+              });
+            },
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
                   decoration: BoxDecoration(
                     color: markerFillColor,
                     shape: BoxShape.circle,
@@ -1242,9 +1210,69 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     ],
                   ),
                 ),
+                if (shouldShowLabel)
+                  Positioned(
+                    top: isSelectedStop
+                        ? -8
+                        : focusedOffsetIndex.isEven
+                            ? -6
+                            : 20,
+                    left: isSelectedStop
+                        ? 17
+                        : focusedOffsetIndex.isEven
+                            ? 22
+                            : null,
+                    right: isSelectedStop
+                        ? null
+                        : focusedOffsetIndex.isEven
+                            ? null
+                            : 22,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 88),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.96),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: isNext
+                              ? _mapAccent.withValues(alpha: 0.28)
+                              : const Color(0xFFE2E8F0),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.06),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        stop.stopName ?? 'Stop',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 9,
+                          height: 1.1,
+                          fontWeight:
+                              isNext ? FontWeight.w800 : FontWeight.w600,
+                          color: isNext ? _mapAccent : const Color(0xFF475569),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         );
       });
     }).toList();
+  }
+
+  String _stopMarkerKey(BusRoute route, Waypoint stop, int stopIndex) {
+    return '${route.routeId}:$stopIndex:${stop.stopName}:${stop.latitude}:${stop.longitude}';
   }
 
   List<Polyline> _buildRoutePolylines(
@@ -1260,9 +1288,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             .map((w) => LatLng(w.latitude, w.longitude))
             .toList(),
         color: isFocused
-            ? _mapAccent.withValues(alpha: 0.28)
-            : _mapAccent.withValues(alpha: 0.14),
-        strokeWidth: isFocused ? 5 : 4,
+            ? const Color(0xFFCBD5E1).withValues(alpha: 0.55)
+            : const Color(0xFFE5E7EB).withValues(alpha: 0.35),
+        strokeWidth: isFocused ? 3.5 : 3,
         borderStrokeWidth: 0,
       );
     }).toList();
@@ -1275,40 +1303,119 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final activeBus = focusedBus;
     final busPoint = LatLng(activeBus!.currentLat!, activeBus.currentLon!);
-    final arrivalDetails = _userLocation != null
-        ? _buildArrivalDetailsForBus(
-            activeBus,
-            focusedRoute,
-            LatLng(_userLocation!.latitude, _userLocation!.longitude),
-          )
+    final nextStop = _resolveStableNextStopForBus(
+      focusedRoute,
+      activeBus,
+      busPoint,
+    );
+    final currentSegmentIndex = nextStop?.stopIndex != null
+        ? _findCurrentLegSegmentIndex(
+            focusedRoute, busPoint, nextStop!.stopIndex)
+        : calculateClosestSegmentIndex(focusedRoute, busPoint);
+    final nextStopRouteIndex = nextStop != null
+        ? _stopRouteIndexForWaypointIndex(focusedRoute, nextStop.stopIndex)
+        : null;
+    final selectedFocusStopIndex =
+        _selectedStopRouteId == focusedRoute.routeId &&
+                _selectedStopRouteIndex != null &&
+                nextStopRouteIndex != null &&
+                _selectedStopRouteIndex! >= nextStopRouteIndex
+            ? _selectedStopRouteIndex
+            : null;
+    final selectedFocusWaypointIndex = selectedFocusStopIndex != null
+        ? _waypointIndexForStopRouteIndex(focusedRoute, selectedFocusStopIndex)
         : null;
     final upcomingPoints = _buildUpcomingPathPoints(
       focusedRoute,
       busPoint,
       stopCount: 5,
-      targetWaypointIndex: arrivalDetails?.targetWaypointIndex,
-      userPoint: arrivalDetails != null && _userLocation != null
-          ? LatLng(_userLocation!.latitude, _userLocation!.longitude)
-          : null,
+      nextStopWaypointIndex: nextStop?.stopIndex,
+      targetWaypointIndex: selectedFocusWaypointIndex,
     );
+    final passedPoints = nextStopRouteIndex != null && nextStopRouteIndex > 0
+        ? _buildPassedPathPoints(
+            focusedRoute,
+            busPoint,
+            currentSegmentIndex: currentSegmentIndex,
+          )
+        : const <LatLng>[];
 
     return [
       ...backgroundRoutes,
+      if (passedPoints.length >= 2)
+        Polyline(
+          points: passedPoints,
+          color: const Color(0xFF94A3B8),
+          strokeWidth: 5,
+          borderStrokeWidth: 1.5,
+          borderColor: Colors.white.withValues(alpha: 0.8),
+        ),
       if (upcomingPoints.length >= 2)
         Polyline(
           points: upcomingPoints,
           color: _mapAccent,
-          strokeWidth: 6,
+          strokeWidth: 5,
           borderStrokeWidth: 2,
-          borderColor: Colors.white.withValues(alpha: 0.85),
+          borderColor: Colors.white.withValues(alpha: 0.88),
         ),
     ];
+  }
+
+  List<LatLng> _buildPassedPathPoints(
+    BusRoute route,
+    LatLng busPoint, {
+    required int currentSegmentIndex,
+  }) {
+    final waypoints = route.waypoints;
+    if (waypoints.isEmpty) {
+      return const [];
+    }
+
+    final points = <LatLng>[
+      LatLng(waypoints.first.latitude, waypoints.first.longitude),
+    ];
+
+    for (int i = 1; i <= currentSegmentIndex && i < waypoints.length; i++) {
+      points.add(LatLng(waypoints[i].latitude, waypoints[i].longitude));
+    }
+
+    points.add(busPoint);
+    return points;
+  }
+
+  int? _stopRouteIndexForWaypointIndex(BusRoute route, int waypointIndex) {
+    var stopRouteIndex = 0;
+    for (int i = 0; i < route.waypoints.length; i++) {
+      final waypoint = route.waypoints[i];
+      if (waypoint.isStop && (waypoint.stopName?.trim().isNotEmpty ?? false)) {
+        if (i == waypointIndex) {
+          return stopRouteIndex;
+        }
+        stopRouteIndex++;
+      }
+    }
+    return null;
+  }
+
+  int? _waypointIndexForStopRouteIndex(BusRoute route, int stopRouteIndex) {
+    var currentStopRouteIndex = 0;
+    for (int i = 0; i < route.waypoints.length; i++) {
+      final waypoint = route.waypoints[i];
+      if (waypoint.isStop && (waypoint.stopName?.trim().isNotEmpty ?? false)) {
+        if (currentStopRouteIndex == stopRouteIndex) {
+          return i;
+        }
+        currentStopRouteIndex++;
+      }
+    }
+    return null;
   }
 
   List<LatLng> _buildUpcomingPathPoints(
     BusRoute route,
     LatLng busPoint, {
     int stopCount = 5,
+    int? nextStopWaypointIndex,
     int? targetWaypointIndex,
     LatLng? userPoint,
   }) {
@@ -1317,7 +1424,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return [busPoint];
     }
 
-    final segmentIndex = calculateClosestSegmentIndex(route, busPoint);
+    final segmentIndex = nextStopWaypointIndex != null
+        ? _findCurrentLegSegmentIndex(route, busPoint, nextStopWaypointIndex)
+        : calculateClosestSegmentIndex(route, busPoint);
     final points = <LatLng>[busPoint];
     var seenStops = 0;
 
@@ -1348,6 +1457,80 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return points;
   }
 
+  int _findCurrentLegSegmentIndex(
+    BusRoute route,
+    LatLng busPoint,
+    int nextStopWaypointIndex,
+  ) {
+    final waypoints = route.waypoints;
+    if (waypoints.length < 2) {
+      return 0;
+    }
+
+    final normalizedNextStopIndex =
+        nextStopWaypointIndex.clamp(0, waypoints.length - 1);
+    var previousStopIndex = normalizedNextStopIndex;
+
+    for (int step = 1; step <= waypoints.length; step++) {
+      final candidateIndex =
+          (normalizedNextStopIndex - step + waypoints.length) %
+              waypoints.length;
+      final candidate = waypoints[candidateIndex];
+      if (candidate.isStop &&
+          (candidate.stopName?.trim().isNotEmpty ?? false)) {
+        previousStopIndex = candidateIndex;
+        break;
+      }
+    }
+
+    double minDistance = double.infinity;
+    var bestSegmentIndex = previousStopIndex;
+    var cursor = previousStopIndex;
+
+    while (cursor != normalizedNextStopIndex) {
+      final nextIndex = (cursor + 1) % waypoints.length;
+      final segStart = waypoints[cursor];
+      final segEnd = waypoints[nextIndex];
+      final distance = _distanceToSegmentSquared(
+        busPoint,
+        LatLng(segStart.latitude, segStart.longitude),
+        LatLng(segEnd.latitude, segEnd.longitude),
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestSegmentIndex = cursor;
+      }
+      cursor = nextIndex;
+    }
+
+    return bestSegmentIndex;
+  }
+
+  double _distanceToSegmentSquared(
+    LatLng point,
+    LatLng segStart,
+    LatLng segEnd,
+  ) {
+    final dx = segEnd.latitude - segStart.latitude;
+    final dy = segEnd.longitude - segStart.longitude;
+    final lenSq = dx * dx + dy * dy;
+    if (lenSq == 0) {
+      final dLat = point.latitude - segStart.latitude;
+      final dLon = point.longitude - segStart.longitude;
+      return dLat * dLat + dLon * dLon;
+    }
+
+    final t = ((point.latitude - segStart.latitude) * dx +
+            (point.longitude - segStart.longitude) * dy) /
+        lenSq;
+    final clampedT = t.clamp(0.0, 1.0);
+    final projLat = segStart.latitude + clampedT * dx;
+    final projLon = segStart.longitude + clampedT * dy;
+    final dLat = point.latitude - projLat;
+    final dLon = point.longitude - projLon;
+    return dLat * dLat + dLon * dLon;
+  }
+
   void _onBusTap(Bus bus) {
     final routes = ref.read(routesProvider);
     final route = _resolveRouteForBus(bus, routes);
@@ -1356,10 +1539,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _activeRoute = route;
       _activeBusMac = bus.busMac;
       _selectedInfoBusMac = bus.busMac;
+      _selectedStopKey = null;
+      _selectedStopRouteId = null;
+      _selectedStopRouteIndex = null;
       if (bus.currentLat != null && bus.currentLon != null && route != null) {
         _currentStopIndex = calculateNextStopIndex(
           route,
           LatLng(bus.currentLat!, bus.currentLon!),
+          bus: bus,
         );
       }
     });
@@ -1381,8 +1568,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return passedStops;
   }
 
-  int calculateNextStopIndex(BusRoute route, LatLng busPosition) {
-    final nextStop = _findNextStopAlongRoute(route, busPosition);
+  int calculateNextStopIndex(
+    BusRoute route,
+    LatLng busPosition, {
+    Bus? bus,
+  }) {
+    final nextStop = bus != null
+        ? _resolveStableNextStopForBus(route, bus, busPosition)
+        : _findNextStopAlongRoute(route, busPosition);
     if (nextStop == null) {
       return calculateBusStopIndex(route, busPosition);
     }
@@ -1451,27 +1644,56 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   NextStopResult? _findSubsequentStopFromWaypointIndex(
     BusRoute route,
     int waypointIndex,
-    LatLng busPosition,
-  ) {
+    LatLng busPosition, {
+    bool forward = true,
+  }) {
     final waypoints = route.waypoints;
-    for (int i = waypointIndex + 1; i < waypoints.length; i++) {
-      final wp = waypoints[i];
-      if (wp.isStop && wp.stopName != null && wp.stopName!.trim().isNotEmpty) {
-        return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+    if (forward) {
+      for (int i = waypointIndex + 1; i < waypoints.length; i++) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
       }
-    }
 
-    for (int i = 0; i <= waypointIndex && i < waypoints.length; i++) {
-      final wp = waypoints[i];
-      if (wp.isStop && wp.stopName != null && wp.stopName!.trim().isNotEmpty) {
-        return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+      for (int i = 0; i <= waypointIndex && i < waypoints.length; i++) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
+      }
+    } else {
+      for (int i = waypointIndex; i >= 0; i--) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
+      }
+
+      for (int i = waypoints.length - 1; i > waypointIndex; i--) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
       }
     }
 
     return null;
   }
 
-  NextStopResult? _findNextStopAlongRoute(BusRoute route, LatLng busPosition) {
+  NextStopResult? _findNextStopAlongRoute(
+    BusRoute route,
+    LatLng busPosition, {
+    bool forward = true,
+  }) {
     if (route.waypoints.isEmpty) {
       return null;
     }
@@ -1479,17 +1701,41 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final segmentIndex = calculateClosestSegmentIndex(route, busPosition);
     final waypoints = route.waypoints;
 
-    for (int i = segmentIndex + 1; i < waypoints.length; i++) {
-      final wp = waypoints[i];
-      if (wp.isStop && wp.stopName != null && wp.stopName!.trim().isNotEmpty) {
-        return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+    if (forward) {
+      for (int i = segmentIndex + 1; i < waypoints.length; i++) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
       }
-    }
 
-    for (int i = 0; i <= segmentIndex && i < waypoints.length; i++) {
-      final wp = waypoints[i];
-      if (wp.isStop && wp.stopName != null && wp.stopName!.trim().isNotEmpty) {
-        return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+      for (int i = 0; i <= segmentIndex && i < waypoints.length; i++) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
+      }
+    } else {
+      for (int i = segmentIndex; i >= 0; i--) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
+      }
+
+      for (int i = waypoints.length - 1; i > segmentIndex; i--) {
+        final wp = waypoints[i];
+        if (wp.isStop &&
+            wp.stopName != null &&
+            wp.stopName!.trim().isNotEmpty) {
+          return _buildNextStopResultFromWaypoint(wp, i, busPosition);
+        }
       }
     }
 
@@ -1501,8 +1747,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     Bus bus,
     LatLng busPosition,
   ) {
-    final candidate = _findNextStopAlongRoute(route, busPosition);
+    final isMovingForward = _isBusMovingForwardOnRoute(route, bus, busPosition);
+    final candidate = _findNextStopAlongRoute(
+      route,
+      busPosition,
+      forward: isMovingForward,
+    );
     final lockedIndex = _lockedNextStopWaypointIndexByBus[bus.busMac];
+    final previousRawPoint = _previousRawBusPositions[bus.busMac];
 
     if (lockedIndex != null &&
         lockedIndex >= 0 &&
@@ -1521,6 +1773,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             route,
             lockedIndex,
             busPosition,
+            forward: isMovingForward,
           );
           if (advanced != null) {
             _lockedNextStopWaypointIndexByBus[bus.busMac] = advanced.stopIndex;
@@ -1528,10 +1781,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           }
         }
 
-        final shouldHoldLockedStop =
-            lockedIndex <= (candidate?.stopIndex ?? lockedIndex) &&
-                lockedDistance <= _nextStopHoldDistanceM &&
-                lockedDistance <= candidateDistance + _nextStopReleaseDistanceM;
+        final previousLockedDistance = previousRawPoint == null
+            ? null
+            : getDistanceFromLatLonInM(
+                previousRawPoint.latitude,
+                previousRawPoint.longitude,
+                lockedWaypoint.latitude,
+                lockedWaypoint.longitude,
+              );
+        final isMovingAwayFromLockedStop = previousLockedDistance != null &&
+            lockedDistance > previousLockedDistance + 5;
+        final shouldHoldLockedStop = !isMovingAwayFromLockedStop &&
+            (isMovingForward
+                ? lockedIndex <= (candidate?.stopIndex ?? lockedIndex)
+                : lockedIndex >= (candidate?.stopIndex ?? lockedIndex)) &&
+            lockedDistance <= _nextStopHoldDistanceM &&
+            lockedDistance <= candidateDistance + _nextStopReleaseDistanceM;
 
         if (shouldHoldLockedStop) {
           return lockedStop;
@@ -1545,6 +1810,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           route,
           candidate.stopIndex,
           busPosition,
+          forward: isMovingForward,
         );
         if (advanced != null) {
           _lockedNextStopWaypointIndexByBus[bus.busMac] = advanced.stopIndex;
@@ -1554,6 +1820,38 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       _lockedNextStopWaypointIndexByBus[bus.busMac] = candidate.stopIndex;
     }
     return candidate;
+  }
+
+  bool _isBusMovingForwardOnRoute(BusRoute route, Bus bus, LatLng busPosition) {
+    final previousRawPoint = _previousRawBusPositions[bus.busMac];
+    final currentRawPoint = _lastRawBusPositions[bus.busMac] ?? busPosition;
+
+    if (previousRawPoint == null ||
+        _pointDistanceSquared(previousRawPoint, currentRawPoint) == 0) {
+      return true;
+    }
+
+    final segmentIndex = calculateClosestSegmentIndex(route, currentRawPoint);
+    final waypoints = route.waypoints;
+    if (segmentIndex < 0 || segmentIndex >= waypoints.length - 1) {
+      return true;
+    }
+
+    final segStart = LatLng(
+      waypoints[segmentIndex].latitude,
+      waypoints[segmentIndex].longitude,
+    );
+    final segEnd = LatLng(
+      waypoints[segmentIndex + 1].latitude,
+      waypoints[segmentIndex + 1].longitude,
+    );
+    final routeDx = segEnd.longitude - segStart.longitude;
+    final routeDy = segEnd.latitude - segStart.latitude;
+    final motionDx = currentRawPoint.longitude - previousRawPoint.longitude;
+    final motionDy = currentRawPoint.latitude - previousRawPoint.latitude;
+    final dot = (routeDx * motionDx) + (routeDy * motionDy);
+
+    return dot >= 0;
   }
 
   ({Waypoint stop, int waypointIndex, double walkingDistanceM})?
@@ -2227,66 +2525,55 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ],
                     ),
                   ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7FAFC),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              shouldShowOfflineState
-                                  ? Icons.cloud_off_rounded
-                                  : _ridingBusMac == null
-                                      ? Icons.people_alt_rounded
-                                      : Icons.access_time_filled_rounded,
-                              size: 16,
-                              color: shouldShowOfflineState
-                                  ? const Color(0xFF94A3B8)
-                                  : _ridingBusMac == null
-                                      ? incomingPassengerColor
-                                      : const Color(0xFF48BB78),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              shouldShowOfflineState
-                                  ? 'OFFLINE'
-                                  : _ridingBusMac == null
-                                      ? '$incomingPassengerCount/40'
-                                      : '${nextStop?.etaMinutes ?? 0} min',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                  if (shouldShowOfflineState || _ridingBusMac == null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF7FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                shouldShowOfflineState
+                                    ? Icons.cloud_off_rounded
+                                    : Icons.people_alt_rounded,
+                                size: 16,
                                 color: shouldShowOfflineState
-                                    ? Color(0xFF94A3B8)
-                                    : _ridingBusMac == null
-                                        ? incomingPassengerColor
-                                        : Color(0xFF48BB78),
+                                    ? const Color(0xFF94A3B8)
+                                    : incomingPassengerColor,
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          shouldShowOfflineState
-                              ? 'Status'
-                              : _ridingBusMac == null
-                                  ? 'Passenger'
-                                  : 'ETA',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFFA0AEC0),
+                              const SizedBox(width: 4),
+                              Text(
+                                shouldShowOfflineState
+                                    ? 'OFFLINE'
+                                    : '$incomingPassengerCount/40',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: shouldShowOfflineState
+                                      ? const Color(0xFF94A3B8)
+                                      : incomingPassengerColor,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 2),
+                          Text(
+                            shouldShowOfflineState ? 'Status' : 'Passenger',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFFA0AEC0),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -2384,7 +2671,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            _ridingBusMac == null ? 'ETA' : 'ROUTE',
+                            'ETA',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
@@ -2400,7 +2687,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                     ? (displayBusArrival != null
                                         ? '${displayBusArrival.etaMinutes} min'
                                         : '-')
-                                    : (ridingRoute?.routeName ?? '-'),
+                                    : (nextStop?.etaMinutes != null
+                                        ? '${nextStop!.etaMinutes} min'
+                                        : '-'),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -2818,6 +3107,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ? calculateNextStopIndex(
             focusedRoute,
             LatLng(focusedBus!.currentLat!, focusedBus.currentLon!),
+            bus: focusedBus,
           )
         : (_activeRoute != null ? _currentStopIndex : null);
 
@@ -2846,7 +3136,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               initialCenter: _sutCenter,
               initialZoom: 15.5,
               onTap: (tapPosition, point) {
-                if (_selectedInfoBusMac != null || _activeBusMac != null) {
+                if (_selectedInfoBusMac != null ||
+                    _activeBusMac != null ||
+                    _selectedStopKey != null) {
                   _clearSelectedBusFocus();
                 }
               },

@@ -82,6 +82,7 @@ services:
       - MONGODB_URL=${MONGODB_URL:-mongodb://mongodb:27017/sut_smart_bus}
       - TZ=${TZ:-Asia/Bangkok}
       - API_SECRET_KEY=${API_SECRET_KEY:-}
+      - RING_COMMAND_SECRET=${RING_COMMAND_SECRET:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
