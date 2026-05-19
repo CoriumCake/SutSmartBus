@@ -365,8 +365,17 @@ void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
     if (isRingCommand && matchesBusMac && validTimestamp && validSignature) {
       lastAcceptedRingTimestamp = timestamp;
       ringPending = true;
+      Serial.printf("Ring command accepted for %s\n", targetBusMac.c_str());
     } else {
-      Serial.println("⚠️ Ignored unsigned or replayed ring command.");
+      Serial.printf(
+        "Ring command ignored: command=%d mac=%d timestamp=%d signature=%d topic=%s target=%s\n",
+        isRingCommand,
+        matchesBusMac,
+        validTimestamp,
+        validSignature,
+        topic,
+        targetBusMac.c_str()
+      );
     }
     return;
   }
@@ -464,6 +473,7 @@ void setupMQTT() {
   mqttClient.setClientId(mqttClientId);
   snprintf(mqttStatusTopic, sizeof(mqttStatusTopic), "sut/bus/%s/status", reported_bus_mac);
   snprintf(mqttRingTopic, sizeof(mqttRingTopic), "%s/%s/ring", MQTT_TOPIC_RING_PREFIX, reported_bus_mac);
+  Serial.printf("MQTT Ring topic: %s\n", mqttRingTopic);
   buildStatusPayload(true, mqttStatusOnlinePayload, sizeof(mqttStatusOnlinePayload));
   buildStatusPayload(false, mqttStatusOfflinePayload, sizeof(mqttStatusOfflinePayload));
   mqttClient.setWill(mqttStatusTopic, 1, true, mqttStatusOfflinePayload);
