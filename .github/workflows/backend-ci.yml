@@ -1,0 +1,52 @@
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - "docker-compose.yml"
+      - "server/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "docker-compose.yml"
+      - "server/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    env:
+      MQTT_BROKER_HOST: ${{ vars.MQTT_BROKER_HOST }}
+      MQTT_BROKER_PORT: ${{ vars.MQTT_BROKER_PORT }}
+      MONGODB_URL: ${{ vars.MONGODB_URL }}
+      TZ: ${{ vars.TZ }}
+      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
+      RATE_LIMIT_PER_MINUTE: ${{ vars.RATE_LIMIT_PER_MINUTE }}
+      MAX_UPLOAD_SIZE: ${{ vars.MAX_UPLOAD_SIZE }}
+      OTA_FALLBACK_IP: ${{ vars.OTA_FALLBACK_IP }}
+      DB_FILE: ${{ vars.DB_FILE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start backend stack
+        run: docker compose up -d --build
+
+      - name: Wait for health endpoint
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8000/health; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker compose logs
+          exit 1
+
+      - name: Stop backend stack
+        if: always()
+        run: docker compose down -v

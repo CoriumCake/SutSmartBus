@@ -1,0 +1,81 @@
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import datetime, timezone
+from bson import ObjectId
+from pydantic_core import core_schema
+
+
+class PyObjectId(ObjectId):
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v, info):
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid objectid")
+        return ObjectId(v)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema_obj, handler):
+        return core_schema.json_schema_string()
+
+class MongoBaseModel(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        populate_by_name = True
+
+class Bus(MongoBaseModel):
+    bus_id: Optional[str] = None
+    bus_name: Optional[str] = None
+    route_id: Optional[str] = None
+    current_lat: Optional[float] = None
+    current_lon: Optional[float] = None
+    seats_available: int = 0
+    person_count: int = 0
+    mac_address: str = Field(..., unique=True)
+    pm2_5: float = 0.0
+    pm10: float = 0.0
+    temp: float = 0.0
+    hum: float = 0.0
+    rssi: Optional[int] = None
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class Stop(MongoBaseModel):
+    name: str
+    lat: float
+    lon: float
+
+class Route(MongoBaseModel):
+    name: str
+    description: Optional[str] = None
+    stops: List[PyObjectId] = []
+
+class Feedback(MongoBaseModel):
+    name: str
+    message: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class HardwareLocation(MongoBaseModel):
+    lat: float
+    lon: float
+    pm2_5: float = 0.0
+    pm10: float = 0.0
+    rssi: Optional[int] = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    bus_mac: Optional[str] = "FAKE-PM-BUS"
+
+class BlockedMAC(MongoBaseModel):
+    mac_address: str = Field(..., unique=True)
+    reason: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class PMZone(MongoBaseModel):
+    name: str = Field(...)
+    points: List[List[float]] = []  # List of [lat, lon] points forming a polygon
+    avg_pm25: float = 0.0
+    avg_pm10: float = 0.0
+    last_updated: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

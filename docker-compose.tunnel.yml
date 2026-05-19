@@ -1,0 +1,27 @@
+services:
+  server:
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  mosquitto:
+    ports:
+      - "1883:1883"
+      - "127.0.0.1:9001:9001"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: sut-cloudflared
+    restart: unless-stopped
+    env_file:
+      - ./server/.env.cloudflare
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token
+      - $${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      server:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy

@@ -1,0 +1,26 @@
+version: 1.0.0+1
+name: sut_route_editor
+description: Dedicated Flutter app for editing and syncing bus routes
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  dio: ^5.7.0
+  file_picker: ^10.3.10
+  flutter_map: ^7.0.2
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  latlong2: ^0.9.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true

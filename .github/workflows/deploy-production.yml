@@ -1,0 +1,78 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "docker-compose.yml"
+      - "server/**"
+      - ".github/workflows/deploy-production.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    environment: production
+    env:
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_BRANCH: ${{ vars.DEPLOY_BRANCH }}
+      MQTT_BROKER_HOST: ${{ vars.MQTT_BROKER_HOST }}
+      MQTT_BROKER_PORT: ${{ vars.MQTT_BROKER_PORT }}
+      MONGODB_URL: ${{ vars.MONGODB_URL }}
+      TZ: ${{ vars.TZ }}
+      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+      ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+      CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
+      RATE_LIMIT_PER_MINUTE: ${{ vars.RATE_LIMIT_PER_MINUTE }}
+      MAX_UPLOAD_SIZE: ${{ vars.MAX_UPLOAD_SIZE }}
+      OTA_FALLBACK_IP: ${{ vars.OTA_FALLBACK_IP }}
+      DB_FILE: ${{ vars.DB_FILE }}
+
+    steps:
+      - name: Build deployment env file
+        run: |
+          cat > .deploy.env <<EOF
+          MQTT_BROKER_HOST=$MQTT_BROKER_HOST
+          MQTT_BROKER_PORT=$MQTT_BROKER_PORT
+          MONGODB_URL=$MONGODB_URL
+          TZ=$TZ
+          API_SECRET_KEY=$API_SECRET_KEY
+          ADMIN_PASSWORD=$ADMIN_PASSWORD
+          CORS_ORIGINS=$CORS_ORIGINS
+          RATE_LIMIT_PER_MINUTE=$RATE_LIMIT_PER_MINUTE
+          MAX_UPLOAD_SIZE=$MAX_UPLOAD_SIZE
+          OTA_FALLBACK_IP=$OTA_FALLBACK_IP
+          DB_FILE=$DB_FILE
+          EOF
+
+      - name: Sync repository
+        run: |
+          cd "$DEPLOY_PATH"
+          git fetch origin
+          git checkout "$DEPLOY_BRANCH"
+          git pull --ff-only origin "$DEPLOY_BRANCH"
+
+      - name: Install deployment env file
+        run: |
+          mkdir -p "$DEPLOY_PATH"
+          cp .deploy.env "$DEPLOY_PATH/.env"
+
+      - name: Deploy locally
+        run: |
+          cd "$DEPLOY_PATH"
+          docker compose up -d --build
+
+          for i in $(seq 1 30); do
+            status=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' sut-server 2>/dev/null || echo "missing")
+            if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
+              echo "Deployment health check passed with status: $status"
+              exit 0
+            fi
+            echo "Waiting for sut-server health, current status: $status"
+            sleep 5
+          done
+
+          docker inspect sut-server --format '{{json .State}}' || true
+          docker compose logs --tail=200
+          exit 1
