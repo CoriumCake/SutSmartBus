@@ -203,9 +203,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   List<Marker> _buildBusMarkers(
     List<Bus> buses,
-    List<BusRoute> routes, {
-    required bool debugMode,
-  }) {
+    List<BusRoute> routes,
+  ) {
     return buses
         .where((b) => b.currentLat != null && b.currentLon != null)
         .map((bus) {
@@ -229,31 +228,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         point: LatLng(bus.currentLat!, bus.currentLon!),
         width: isActive ? 42 : 36,
         height: isActive ? 42 : 36,
-        child: debugMode
-            ? LongPressDraggable<Bus>(
-                data: bus,
-                onDragEnd: (details) => _handleBusDragEnd(bus, details),
-                feedback: Material(
-                  color: Colors.transparent,
-                  child: SizedBox(
-                    width: 42,
-                    height: 42,
-                    child: Opacity(
-                      opacity: 0.9,
-                      child: _buildOrientedBusIcon(heading),
-                    ),
-                  ),
-                ),
-                childWhenDragging: Opacity(
-                  opacity: 0.3,
-                  child: markerChild,
-                ),
-                child: Tooltip(
-                  message: 'Long press and drag to simulate bus location',
-                  child: markerChild,
-                ),
-              )
-            : markerChild,
+        child: markerChild,
       );
     }).toList();
   }
@@ -1099,59 +1074,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     final target = _mapController.camera.offsetToCrs(clampedOffset);
     _updateSpoofedUserLocation(target);
-  }
-
-  Future<void> _updateBusLocationForDebug(Bus bus, LatLng point) async {
-    final updatedBus = bus.copyWith(
-      currentLat: point.latitude,
-      currentLon: point.longitude,
-      lastUpdated: DateTime.now().millisecondsSinceEpoch,
-    );
-
-    ref.read(dataProvider.notifier).updateBusLocally(updatedBus);
-
-    final route = _resolveRouteForBus(updatedBus, ref.read(routesProvider));
-    await ref.read(apiServiceProvider).sendFakeLocation({
-      'bus_mac': updatedBus.busMac,
-      'bus_name': updatedBus.busName,
-      'current_lat': point.latitude,
-      'current_lon': point.longitude,
-      'person_count': updatedBus.personCount ?? 0,
-      'seats_available': updatedBus.seatsAvailable ?? 0,
-      'pm2_5': updatedBus.pm25 ?? 0,
-      'pm10': updatedBus.pm10 ?? 0,
-      'temp': updatedBus.temp ?? 0,
-      'hum': updatedBus.hum ?? 0,
-      'is_online': true,
-      'route_id': route?.routeId ?? updatedBus.routeId,
-      'last_updated': DateTime.now().toIso8601String(),
-    });
-  }
-
-  Future<void> _handleBusDragEnd(Bus bus, DraggableDetails details) async {
-    final renderObject =
-        _mapViewportKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderObject == null) {
-      return;
-    }
-
-    final localOffset = renderObject.globalToLocal(details.offset);
-    final clampedOffset = Offset(
-      localOffset.dx.clamp(0.0, math.max(renderObject.size.width - 1, 0)),
-      localOffset.dy.clamp(0.0, math.max(renderObject.size.height - 1, 0)),
-    );
-
-    final target = _mapController.camera.offsetToCrs(clampedOffset);
-    await _updateBusLocationForDebug(bus, target);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${bus.busName} moved for debug simulation.'),
-        duration: const Duration(milliseconds: 700),
-      ),
-    );
   }
 
   Widget _buildUserMarker(bool testModeEnabled) {
@@ -2870,14 +2792,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     )?.bus;
   }
 
-  bool _shouldShowBus(Bus bus, bool debugMode) {
-    if (bus.isDebugRouteDriverBus) {
-      return false;
-    }
-
-    return debugMode || !bus.isDebugBus;
-  }
-
   @override
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
@@ -2888,7 +2802,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     _syncAnimatedBusPositions(buses, routes);
     final renderedBuses = buses.map(_renderedBus).toList();
     final visibleRenderedBuses =
-        renderedBuses.where((bus) => _shouldShowBus(bus, debugMode)).toList();
+        renderedBuses.where((bus) => debugMode || !bus.isDebugBus).toList();
     final displayedBuses = _ridingBusMac == null
         ? visibleRenderedBuses
         : visibleRenderedBuses
@@ -2970,7 +2884,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ..._buildBusMarkers(
                   displayedBuses,
                   routes,
-                  debugMode: debugMode,
                 ),
               ]),
             ],

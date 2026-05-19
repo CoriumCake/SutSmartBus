@@ -7,7 +7,9 @@ from typing import Optional
 from app import crud
 from core.config import settings
 
-RIDE_START_MAX_DISTANCE_M = 10.0
+# Keep ride start validation aligned with the Flutter boarding gate in
+# `MapScreen` so riders do not see an enabled CTA that the backend rejects.
+RIDE_START_MAX_DISTANCE_M = 25.0
 RIDE_RING_MAX_DISTANCE_M = 18.0
 RIDE_GPS_ACCURACY_COMPENSATION_CAP_M = 15.0
 RIDE_SESSION_DURATION = timedelta(minutes=30)
