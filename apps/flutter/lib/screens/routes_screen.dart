@@ -84,10 +84,6 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
   }
 
   bool _shouldShowBus(Bus bus, bool debugMode) {
-    if (bus.isDebugRouteDriverBus) {
-      return false;
-    }
-
     return debugMode || !bus.isDebugBus;
   }
 

@@ -176,7 +176,7 @@ def on_message(client, userdata, msg):
             try:
                 data = json.loads(payload_str)
                 bus_id = (data.get('bus_id') or '').strip() or None
-                bus_mac = data.get('bus_mac', constants.BUS_MAC_MOCK)
+                bus_mac = (data.get('bus_mac') or '').strip()
                 bus_name = (data.get('bus_name') or '').strip() or None
                 current_passengers = data.get('count', 0)
 
@@ -192,6 +192,13 @@ def on_message(client, userdata, msg):
                     ).result(timeout=1)
 
                 resolved_mac = resolved_bus.get("mac_address") if resolved_bus else bus_mac
+                if not resolved_mac:
+                    logger.warning(
+                        "Skipping door count message without a resolvable bus identity: bus_id=%s bus_name=%s",
+                        bus_id,
+                        bus_name,
+                    )
+                    return
                 resolved_lat = data.get("lat")
                 resolved_lon = data.get("lon")
                 if resolved_lat is None and resolved_bus is not None:
@@ -254,11 +261,14 @@ def on_message(client, userdata, msg):
         payload = json.loads(payload_str)
         
         bus_id = (payload.get("bus_id") or "").strip() or None
-        # TESTING MODE: If bus_mac is missing, assume it's our testing ESP32
-        bus_mac = payload.get("bus_mac")
+        bus_mac = (payload.get("bus_mac") or "").strip()
         if not bus_mac:
-            bus_mac = constants.BUS_MAC_MOCK
-            print(f"⚠️ NO MAC in payload. Defaulting to: {bus_mac}")
+            logger.warning(
+                "Skipping MQTT message without bus_mac on topic=%s payload=%s",
+                msg.topic,
+                payload,
+            )
+            return
         
         print(f"📥 Device MSG: {bus_mac} | Topic: {msg.topic}")
 

@@ -612,10 +612,19 @@ void setup() {
   Serial.begin(115200);
   pinMode(BUZZER_PIN, OUTPUT);
   
-  // Get MAC immediately
-  uint8_t mac[6];
-  esp_read_mac(mac, ESP_MAC_WIFI_STA);
-  snprintf(bus_mac, 18, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  // Read the burned-in station MAC directly from efuse.
+  uint64_t chipid = ESP.getEfuseMac();
+  snprintf(
+    bus_mac,
+    sizeof(bus_mac),
+    "%02X:%02X:%02X:%02X:%02X:%02X",
+    (uint8_t)(chipid >> 40),
+    (uint8_t)(chipid >> 32),
+    (uint8_t)(chipid >> 24),
+    (uint8_t)(chipid >> 16),
+    (uint8_t)(chipid >> 8),
+    (uint8_t)chipid
+  );
   if (strlen(BUS_MAC_ALIAS) > 0) {
     snprintf(reported_bus_mac, sizeof(reported_bus_mac), "%s", BUS_MAC_ALIAS);
   } else {
@@ -663,6 +672,7 @@ void setup() {
   Serial.println("🌐 HTTP server started on port 80");
 
   Serial.println("🚌 Optimized Bus Cam Ready (Stripped-Down Serial)");
+  Serial.printf("ESP32-CAM MAC Address: %s\n", bus_mac);
   Serial.printf("Direction Mode: R->L is %s\n", IS_RIGHT_TO_LEFT_ENTER ? "ENTER" : "EXIT");
 }
 

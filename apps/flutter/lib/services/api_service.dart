@@ -298,26 +298,6 @@ class ApiService {
     }
   }
 
-  Future<void> sendFakeLocation(Map<String, dynamic> data) async {
-    if (!_canUsePrivilegedApi) return;
-
-    try {
-      await _dio.post('/api/debug/location', data: data);
-    } catch (e) {
-      // Silent
-    }
-  }
-
-  Future<void> deleteFakeLocation(String busId) async {
-    if (!_canUsePrivilegedApi) return;
-
-    try {
-      await _dio.delete('/api/debug/location/$busId');
-    } catch (e) {
-      // Silent
-    }
-  }
-
   // ─── PM Zones ────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> fetchPMZones() async {

@@ -56,16 +56,6 @@ class Bus {
         (normalizedAddress?.startsWith('DEBUG-') ?? false);
   }
 
-  bool get isDebugRouteDriverBus {
-    final normalizedName = busName.toUpperCase();
-    final normalizedMac = busMac.toUpperCase();
-    final normalizedAddress = macAddress?.toUpperCase();
-
-    return normalizedMac == 'DEBUG-MAC-01' ||
-        normalizedAddress == 'DEBUG-MAC-01' ||
-        normalizedName.contains('DEBUG ROUTE DRIVER');
-  }
-
   static int _parseLastUpdated(dynamic value) {
     if (value == null) return 0;
 
