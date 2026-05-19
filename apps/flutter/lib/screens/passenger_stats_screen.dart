@@ -411,7 +411,7 @@ class _PassengerStatsScreenState extends ConsumerState<PassengerStatsScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedBusMac,
+                    initialValue: _selectedBusMac,
                     isExpanded: true,
                     decoration: const InputDecoration(
                       border: OutlineInputBorder(),
@@ -592,7 +592,7 @@ class _PassengerStatsScreenState extends ConsumerState<PassengerStatsScreen> {
                     ? 'Preview data'
                     : _mode == _StatsMode.day
                         ? '${_viewModel.totalSamples} samples'
-                        : '${_viewModel.totalSamples} samples • ${_selectedAverageWindowDays} day average',
+                        : '${_viewModel.totalSamples} samples • $_selectedAverageWindowDays day average',
                 style: theme.textTheme.labelMedium,
               ),
             ),

@@ -38,6 +38,9 @@ apps/flutter/.pub-cache/
 apps/flutter/build/
 apps/flutter/android/.gradle/
 apps/flutter/android/local.properties
+apps/flutter/android/key.properties
+apps/flutter/android/*.jks
+apps/flutter/android/*.keystore
 apps/flutter/android/app/debug/
 apps/flutter/android/app/profile/
 apps/flutter/android/app/release/
@@ -45,7 +48,6 @@ apps/flutter/android/build/
 apps/flutter/ios/Flutter/Generated.xcconfig
 apps/flutter/ios/Flutter/flutter_export_environment.sh
 apps/flutter/ios/Flutter/ephemeral/
-apps/flutter/lib/config/env.dart
 
 # Firmware / Arduino
 .pio/

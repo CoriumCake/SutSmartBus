@@ -24,11 +24,13 @@ class OnboardBottomSheet extends StatelessWidget {
     // PM 2.5 dot color
     Color pm25Color = Colors.green;
     if (bus.pm25 != null) {
-      if (bus.pm25! > 55.4)
+      if (bus.pm25! > 55.4) {
         pm25Color = Colors.red;
-      else if (bus.pm25! > 35.4)
+      } else if (bus.pm25! > 35.4) {
         pm25Color = Colors.orange;
-      else if (bus.pm25! > 12) pm25Color = Colors.yellow[700]!;
+      } else if (bus.pm25! > 12) {
+        pm25Color = Colors.yellow[700]!;
+      }
     }
 
     // Determine RSSI strength

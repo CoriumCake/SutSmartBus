@@ -20,7 +20,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('ข้อกำหนดการใช้บริการ'), findsOneWidget);
-    expect(find.text('ยอมรับข้อกำหนด'), findsOneWidget);
+    expect(find.text('ยินยอม'), findsOneWidget);
     expect(find.text('ปฏิเสธ'), findsOneWidget);
     expect(find.text('Step 1 of 2'), findsNothing);
     expect(find.text('Read the Terms of Service to continue.'), findsNothing);
@@ -31,5 +31,13 @@ void main() {
 
     expect(find.text('Terms of Service'), findsOneWidget);
     expect(find.text('Accept Terms'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Accept Terms'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Accept Terms'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Privacy Policy'), findsOneWidget);
+    expect(find.text('Accept'), findsOneWidget);
   });
 }

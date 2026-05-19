@@ -2199,6 +2199,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final offlineBus = _ridingBusMac != null
         ? ridingBus
         : nearbyCandidateBuses.where((bus) => bus.isOffline).firstOrNull;
+    final incomingPassengerCount = actionBus?.personCount ?? 0;
+    final incomingPassengerColor = incomingPassengerCount >= 40
+        ? const Color(0xFFE53E3E)
+        : incomingPassengerCount >= 37
+            ? const Color(0xFFD69E2E)
+            : const Color(0xFF48BB78);
 
     return Positioned(
       bottom: 24,
@@ -2297,26 +2303,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               shouldShowOfflineState
                                   ? Icons.cloud_off_rounded
                                   : _ridingBusMac == null
-                                      ? Icons.directions_walk
+                                      ? Icons.people_alt_rounded
                                       : Icons.access_time_filled_rounded,
                               size: 16,
                               color: shouldShowOfflineState
                                   ? const Color(0xFF94A3B8)
-                                  : const Color(0xFF48BB78),
+                                  : _ridingBusMac == null
+                                      ? incomingPassengerColor
+                                      : const Color(0xFF48BB78),
                             ),
                             const SizedBox(width: 4),
                             Text(
                               shouldShowOfflineState
                                   ? 'OFFLINE'
                                   : _ridingBusMac == null
-                                      ? '${displayBusArrival?.stopsAway ?? 0}'
+                                      ? '$incomingPassengerCount/40'
                                       : '${nextStop?.etaMinutes ?? 0} min',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.bold,
                                 color: shouldShowOfflineState
                                     ? Color(0xFF94A3B8)
-                                    : Color(0xFF48BB78),
+                                    : _ridingBusMac == null
+                                        ? incomingPassengerColor
+                                        : Color(0xFF48BB78),
                               ),
                             ),
                           ],
@@ -2326,7 +2336,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           shouldShowOfflineState
                               ? 'Status'
                               : _ridingBusMac == null
-                                  ? 'Stops'
+                                  ? 'Passenger'
                                   : 'ETA',
                           style: const TextStyle(
                             fontSize: 10,

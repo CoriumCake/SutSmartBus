@@ -67,6 +67,17 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
       language: _language,
     );
     final isThai = _language == LegalDocumentLanguage.th;
+    final acceptLabel = _submitting
+        ? isThai
+            ? 'กำลังดำเนินการ...'
+            : 'Please wait...'
+        : isTermsStep
+            ? isThai
+                ? 'ยินยอม'
+                : 'Accept Terms'
+            : isThai
+                ? 'ยินยอม'
+                : 'Accept';
 
     return PopScope(
       canPop: false,
@@ -168,20 +179,15 @@ class _LegalConsentScreenState extends ConsumerState<LegalConsentScreen> {
                             ),
                             const SizedBox(width: 12),
                             Expanded(
-                              child: ElevatedButton(
+                              child: OutlinedButton(
                                 onPressed: _submitting ? null : _accept,
-                                child: Text(
-                                  _submitting
-                                      ? isThai
-                                          ? 'กำลังดำเนินการ...'
-                                          : 'Please wait...'
-                                      : isTermsStep
-                                          ? isThai
-                                              ? 'ยอมรับข้อกำหนด'
-                                              : 'Accept Terms'
-                                          : isThai
-                                              ? 'ยอมรับนโยบาย'
-                                              : 'Accept Privacy Policy',
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    acceptLabel,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                  ),
                                 ),
                               ),
                             ),

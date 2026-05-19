@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     FIRMWARE_DIR: str = "firmware"
     
     # Security Settings
-    # If set, all API requests must include X-API-Key header
+    # If set, protected API requests must include X-API-Key header.
+    # Public mobile read/user endpoints remain unauthenticated.
     API_SECRET_KEY: Optional[str] = None
     ADMIN_PASSWORD: str = "admin123"
     
