@@ -47,11 +47,14 @@ class MqttService {
 
       final wsUrl = ApiConfig.mqttWsUrl;
       final uri = Uri.parse(wsUrl);
+      final effectivePort = uri.hasPort
+          ? uri.port
+          : (uri.scheme == 'wss' || uri.scheme == 'https' ? 443 : 80);
       final clientIdentifier =
           'sut_smart_bus_flutter_${DateTime.now().millisecondsSinceEpoch}';
 
       // Use the platform-agnostic factory
-      final client = getMqttClient(wsUrl, clientIdentifier, uri.port,
+      final client = getMqttClient(wsUrl, clientIdentifier, effectivePort,
           useWebSocket: true, secure: uri.scheme == 'wss');
 
       _client = client
@@ -73,7 +76,7 @@ class MqttService {
       if (kDebugMode) {
         print(
           '[MqttService] Connecting to $wsUrl '
-          '(scheme=${uri.scheme}, host=${uri.host}, port=${uri.port}, path=${uri.path})',
+          '(scheme=${uri.scheme}, host=${uri.host}, port=$effectivePort, path=${uri.path})',
         );
       }
       await _client!.connect();

@@ -75,6 +75,7 @@ class BusService {
     required String busMac,
     required double userLat,
     required double userLon,
+    double? userAccuracyM,
   }) async {
     try {
       final response = await _dio.post(
@@ -84,6 +85,7 @@ class BusService {
           'device_id': await _getInstallId(),
           'user_lat': userLat,
           'user_lon': userLon,
+          if (userAccuracyM != null) 'user_accuracy_m': userAccuracyM,
         },
         options: Options(headers: ApiConfig.headers),
       );
@@ -137,6 +139,7 @@ class BusService {
     required String sessionId,
     required double userLat,
     required double userLon,
+    double? userAccuracyM,
   }) async {
     try {
       final response = await _dio.post(
@@ -147,6 +150,7 @@ class BusService {
           'device_id': await _getInstallId(),
           'user_lat': userLat,
           'user_lon': userLon,
+          if (userAccuracyM != null) 'user_accuracy_m': userAccuracyM,
         },
         options: Options(headers: ApiConfig.headers),
       );

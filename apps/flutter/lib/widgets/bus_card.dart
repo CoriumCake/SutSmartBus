@@ -52,7 +52,6 @@ class BusCard extends StatelessWidget {
                 // Top row: Name & Route on Left, Signal on Right
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
                       child: Column(
@@ -77,7 +76,6 @@ class BusCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (bus.rssi != null) _buildSignalBadge(bus.rssi!),
                   ],
                 ),
 
@@ -245,66 +243,4 @@ class BusCard extends StatelessWidget {
     );
   }
 
-  Widget _buildSignalBadge(int rssi) {
-    IconData icon;
-    Color color;
-    String label;
-    if (rssi >= -55) {
-      icon = Icons.signal_wifi_4_bar;
-      color = const Color(0xFF48BB78);
-      label = 'Excellent';
-    } else if (rssi >= -65) {
-      icon = Icons.network_wifi_3_bar;
-      color = const Color(0xFF48BB78);
-      label = 'Good';
-    } else if (rssi >= -75) {
-      icon = Icons.network_wifi_2_bar;
-      color = const Color(0xFFECC94B);
-      label = 'Fair';
-    } else if (rssi >= -85) {
-      icon = Icons.network_wifi_1_bar;
-      color = const Color(0xFFED8936);
-      label = 'Weak';
-    } else {
-      icon = Icons.signal_wifi_0_bar;
-      color = const Color(0xFFE53E3E);
-      label = 'Poor';
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7FAFC),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 4),
-              Text(
-                '$rssi dBm',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: color,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10,
-              color: Color(0xFFA0AEC0),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

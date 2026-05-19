@@ -125,8 +125,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
   static const Color _mapAccent = AppTheme.sutOrange;
-  static const double _rideDetectionDistanceM = 12;
-  static const double _rideDetectionGraceDistanceM = 18;
+  static const double _rideDetectionDistanceM = 25;
+  static const double _rideDetectionGraceDistanceM = 32;
+  static const double _rideGpsAccuracyCompensationCapM = 15;
   static const Duration _rideDetectionDuration = Duration(seconds: 5);
   static const Duration _busAnimationFrame = Duration(milliseconds: 16);
   static const Duration _busAnimationMinDuration = Duration(milliseconds: 900);
@@ -829,14 +830,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return;
     }
 
-    if (candidate.distanceM > _rideDetectionGraceDistanceM) {
+    final effectiveDistance =
+        _effectiveRideDistanceM(candidate.distanceM.toDouble());
+
+    if (effectiveDistance > _rideDetectionGraceDistanceM) {
       if (_rideReadyBusMac != null || _rideReadySince != null) {
         _clearRideReadyState();
       }
       return;
     }
 
-    if (candidate.distanceM > _rideDetectionDistanceM) {
+    if (effectiveDistance > _rideDetectionDistanceM) {
       if (_rideReadyBusMac != candidate.bus.busMac &&
           (_rideReadyBusMac != null || _rideReadySince != null)) {
         _clearRideReadyState();
@@ -856,6 +860,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     return DateTime.now().difference(_rideReadySince!) >=
         _rideDetectionDuration;
+  }
+
+  double _effectiveRideDistanceM(double measuredDistanceM) {
+    final accuracy = _userLocation?.accuracy;
+    if (accuracy == null || accuracy.isNaN) {
+      return measuredDistanceM;
+    }
+
+    final compensation =
+        accuracy.clamp(0, _rideGpsAccuracyCompensationCapM).toDouble();
+    return math.max(0, measuredDistanceM - compensation);
   }
 
   void _startRideSessionMonitor() {
@@ -918,6 +933,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         busMac: busInfo.bus.busMac,
         userLat: userLocation.latitude,
         userLon: userLocation.longitude,
+        userAccuracyM: userLocation.accuracy,
       );
       final route = _resolveRouteForBus(busInfo.bus, ref.read(routesProvider));
 
@@ -1012,6 +1028,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         sessionId: sessionId,
         userLat: userLocation.latitude,
         userLon: userLocation.longitude,
+        userAccuracyM: userLocation.accuracy,
       );
       if (!mounted) return;
 
@@ -1628,7 +1645,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     for (int i = 0; i < route.waypoints.length; i++) {
       final waypoint = route.waypoints[i];
-      if (!waypoint.isStop || !(waypoint.stopName?.trim().isNotEmpty ?? false)) {
+      if (!waypoint.isStop ||
+          !(waypoint.stopName?.trim().isNotEmpty ?? false)) {
         continue;
       }
 
@@ -2109,7 +2127,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : null;
     final nextStopName = arrivalDetails?.nextStop?.stopName ??
         (route != null
-            ? _nextStopsForBus(route, bus, count: 1).firstOrNull?.stopName ?? '-'
+            ? _nextStopsForBus(route, bus, count: 1).firstOrNull?.stopName ??
+                '-'
             : '-');
 
     return Positioned(
@@ -2159,14 +2178,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
     final displayBusRoute =
         displayBus != null ? _resolveRouteForBus(displayBus.bus, routes) : null;
-    final displayBusArrival =
-        displayBus != null && displayBusRoute != null
-            ? _buildArrivalDetailsForBus(
-                displayBus.bus,
-                displayBusRoute,
-                LatLng(_userLocation!.latitude, _userLocation!.longitude),
-              )
-            : null;
+    final displayBusArrival = displayBus != null && displayBusRoute != null
+        ? _buildArrivalDetailsForBus(
+            displayBus.bus,
+            displayBusRoute,
+            LatLng(_userLocation!.latitude, _userLocation!.longitude),
+          )
+        : null;
     final incomingBuses = calculateIncomingBuses(
       displayBusArrival?.targetStop ?? nearest.stop,
       onlineNearbyCandidateBuses,
@@ -2187,7 +2205,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : null;
     final actionBus = ridingBus ?? displayBus?.bus;
     final canRide = displayBus != null &&
-        displayBus.distanceM <= _rideDetectionDistanceM &&
+        _effectiveRideDistanceM(displayBus.distanceM.toDouble()) <=
+            _rideDetectionDistanceM &&
         _isRideReadyFor(displayBus.bus.busMac);
     final hasOfflineCandidates =
         nearbyCandidateBuses.any((bus) => bus.isOffline);

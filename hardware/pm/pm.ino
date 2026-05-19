@@ -677,6 +677,8 @@ void debugStatus() {
   bool mqttConnected = mqttClient.connected();
   int rssi = wifiStatus == WL_CONNECTED ? WiFi.RSSI() : 0;
   bool gpsValid = gps.location.isValid();
+  double lat = gpsValid ? gps.location.lat() : 0;
+  double lon = gpsValid ? gps.location.lng() : 0;
   uint32_t sats = gps.satellites.isValid() ? gps.satellites.value() : 0;
   uint32_t freeHeap = ESP.getFreeHeap();
 
@@ -695,11 +697,13 @@ void debugStatus() {
   if (!changed) return;
 
   Serial.printf(
-    "[DEBUG] status wifi=%s mqtt=%s rssi=%d gpsValid=%s gpsChars=%lu sats=%lu pm2_5=%u pm10=%u temp=%.1f hum=%.1f freeHeap=%lu\n",
+    "[DEBUG] status wifi=%s mqtt=%s rssi=%d gpsValid=%s lat=%.6f lon=%.6f gpsChars=%lu sats=%lu pm2_5=%u pm10=%u temp=%.1f hum=%.1f freeHeap=%lu\n",
     wifiStatus == WL_CONNECTED ? "connected" : "disconnected",
     mqttConnected ? "connected" : "disconnected",
     rssi,
     gpsValid ? "yes" : "no",
+    lat,
+    lon,
     (unsigned long)gps.charsProcessed(),
     (unsigned long)sats,
     pm25,
