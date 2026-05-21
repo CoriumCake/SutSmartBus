@@ -84,6 +84,10 @@ char mqttStatusOfflinePayload[256];
 char mqttRingTopic[96];
 char mqttBusIdCommandTopic[96];
 unsigned long lastAcceptedRingTimestamp = 0;
+bool lastPassengerEventIsEnter = true;
+bool hasPassengerEvent = false;
+unsigned long lastPassengerEventAt = 0;
+unsigned long passengerEventSeq = 0;
 
 PsychicMqttClient mqttClient;
 Preferences preferences;
@@ -264,6 +268,10 @@ void recordPassengerCrossing(bool leftToRight) {
   }
 
   Serial.printf("%s detected. Total: %d\n", isEnter ? "ENTER" : "EXIT", passengerCount);
+  lastPassengerEventIsEnter = isEnter;
+  hasPassengerEvent = true;
+  lastPassengerEventAt = millis();
+  passengerEventSeq++;
   sendMQTT(direction);
   savePassengerCount();
   publishStatus();
@@ -350,24 +358,37 @@ void performOTA() {
   }
 }
 
+bool isJsonWhitespace(char c) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+}
+
+int findJsonValueStart(const String& message, const char* fieldName) {
+  String marker = String("\"") + fieldName + "\"";
+  int fieldStart = message.indexOf(marker);
+  if (fieldStart < 0) return -1;
+
+  int colon = message.indexOf(':', fieldStart + marker.length());
+  if (colon < 0) return -1;
+
+  int valueStart = colon + 1;
+  while (valueStart < message.length() && isJsonWhitespace(message[valueStart])) {
+    valueStart++;
+  }
+  return valueStart;
+}
+
 String extractJsonStringField(const String& message, const char* fieldName) {
-  String marker = String("\"") + fieldName + "\":\"";
-  int valueStart = message.indexOf(marker);
-  if (valueStart < 0) return "";
-  valueStart += marker.length();
+  int valueStart = findJsonValueStart(message, fieldName);
+  if (valueStart < 0 || valueStart >= message.length() || message[valueStart] != '"') return "";
+  valueStart++;
   int valueEnd = message.indexOf("\"", valueStart);
   if (valueEnd <= valueStart) return "";
   return message.substring(valueStart, valueEnd);
 }
 
 unsigned long extractJsonUnsignedField(const String& message, const char* fieldName) {
-  String marker = String("\"") + fieldName + "\":";
-  int valueStart = message.indexOf(marker);
+  int valueStart = findJsonValueStart(message, fieldName);
   if (valueStart < 0) return 0;
-  valueStart += marker.length();
-  while (valueStart < message.length() && message[valueStart] == ' ') {
-    valueStart++;
-  }
   int valueEnd = valueStart;
   while (valueEnd < message.length() && isDigit(message[valueEnd])) {
     valueEnd++;
@@ -436,6 +457,7 @@ void resetPassengerCount(const char* reason) {
   blockedStartSide = 0;
   trackStartTime = 0;
   clearStartTime = 0;
+  hasPassengerEvent = false;
   publishStatus();
   Serial.printf("🔄 Passenger count reset (%s)\n", reason);
 }
@@ -444,9 +466,10 @@ void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
   String message = String(payload);
   String topicString = String(topic);
   if (topicString == mqttRingTopic || topicString == mqttBusIdCommandTopic) {
-    bool isRingCommand = message.indexOf("\"command\":\"ring\"") >= 0;
-    bool isResetCountCommand = message.indexOf("\"command\":\"reset_count\"") >= 0;
-    const char* commandName = isResetCountCommand ? "reset_count" : "ring";
+    String command = extractJsonStringField(message, "command");
+    bool isRingCommand = command == "ring";
+    bool isResetCountCommand = command == "reset_count";
+    const char* commandName = command.c_str();
     String targetBusMac = extractJsonStringField(message, "bus_mac");
     unsigned long timestamp = extractJsonUnsignedField(message, "timestamp");
     String signature = extractJsonStringField(message, "sig");
@@ -701,6 +724,23 @@ void handleCapture() {
   free(jpg_buf);
 }
 
+void handleStatus() {
+  char statusJson[160];
+  unsigned long eventAge = hasPassengerEvent ? millis() - lastPassengerEventAt : 0;
+  snprintf(
+    statusJson,
+    sizeof(statusJson),
+    "{\"count\":%d,\"event\":\"%s\",\"event_age_ms\":%lu,\"event_seq\":%lu}",
+    passengerCount,
+    hasPassengerEvent ? (lastPassengerEventIsEnter ? "enter" : "exit") : "",
+    eventAge,
+    passengerEventSeq
+  );
+  httpServer.sendHeader("Cache-Control", "no-cache, no-store");
+  httpServer.sendHeader("Access-Control-Allow-Origin", "*");
+  httpServer.send(200, "application/json", statusJson);
+}
+
 void handleRoot() {
   httpServer.send(200, "text/html",
     "<!DOCTYPE html><html><head>"
@@ -709,26 +749,60 @@ void handleRoot() {
     "<style>"
     "body{background:#111;display:flex;flex-direction:column;align-items:center;"
     "justify-content:center;height:100vh;margin:0;color:#fff;font-family:sans-serif}"
-    "img{image-rendering:pixelated;width:100%;max-width:480px;border:1px solid #333}"
+    ".stage{position:relative;width:100%;max-width:480px}"
+    "img{image-rendering:pixelated;width:100%;border:1px solid #333;display:block}"
+    ".badge{position:absolute;top:12px;left:50%;transform:translateX(-50%) scale(.96);"
+    "display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;"
+    "font-weight:800;letter-spacing:.08em;color:#fff;opacity:0;transition:opacity .16s,transform .16s;"
+    "box-shadow:0 8px 24px rgba(0,0,0,.35);pointer-events:none}"
+    ".badge.show{opacity:1;transform:translateX(-50%) scale(1)}"
+    ".badge.enter{background:#16a34a}.badge.exit{background:#dc2626}"
+    ".dot{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;"
+    "background:rgba(255,255,255,.22);font-size:20px;line-height:1}"
     "p{margin:8px 0;font-size:13px;color:#888}"
     "</style></head><body>"
+    "<div class='stage'>"
     "<img id='cam' src='/capture'>"
+    "<div id='badge' class='badge'><span id='dot' class='dot'>+</span><span id='label'>ENTER</span></div>"
+    "</div>"
     "<p id='info'>Connecting...</p>"
     "<script>"
     "const img=document.getElementById('cam');"
     "const info=document.getElementById('info');"
-    "let last=Date.now(),frames=0;"
+    "const badge=document.getElementById('badge');"
+    "const dot=document.getElementById('dot');"
+    "const label=document.getElementById('label');"
+    "let last=Date.now(),frames=0,shownFps=0;"
+    "let lastSeq=0,badgeTimer=null;"
+    "function showEvent(type){"
+    "  const enter=type==='enter';"
+    "  badge.className='badge show '+(enter?'enter':'exit');"
+    "  dot.innerHTML=enter?'&#128994;':'&#128308;';"
+    "  label.innerHTML=enter?'&#128994; ENTER':'&#128308; EXIT';"
+    "  clearTimeout(badgeTimer);"
+    "  badgeTimer=setTimeout(()=>badge.classList.remove('show'),1800);"
+    "}"
+    "async function poll(){"
+    "  try{"
+    "    const r=await fetch('/status?'+Date.now(),{cache:'no-store'});"
+    "    const s=await r.json();"
+    "    info.textContent='Count: '+s.count+' | '+shownFps+' fps';"
+    "    if(s.event_seq&&s.event_seq!==lastSeq){lastSeq=s.event_seq;if(s.event_age_ms<2500)showEvent(s.event);}"
+    "  }catch(e){}"
+    "  setTimeout(poll,500);"
+    "}"
     "function next(){"
     "  const t=Date.now();"
     "  img.src='/capture?'+t;"
     "  img.onload=()=>{"
     "    frames++;"
-    "    if(t-last>=1000){info.textContent=frames+' fps';frames=0;last=t;}"
+    "    if(t-last>=1000){shownFps=frames;frames=0;last=t;}"
     "    next();"
     "  };"
     "  img.onerror=()=>setTimeout(next,1000);"
     "}"
     "next();"
+    "poll();"
     "</script></body></html>"
   );
 }
@@ -793,6 +867,7 @@ void setup() {
 
   httpServer.on("/", handleRoot);
   httpServer.on("/capture", handleCapture);
+  httpServer.on("/status", handleStatus);
   httpServer.begin();
   Serial.println("🌐 HTTP server started on port 80");
 
