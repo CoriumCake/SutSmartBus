@@ -102,16 +102,22 @@ async def ring_bell(request: schemas.SecureRingRequest, http_request: Request):
             user_accuracy_m=request.user_accuracy_m,
         )
         timestamp = int(time.time())
-        mqtt_client.publish(constants.ring_topic_for_bus(request.bus_mac), json.dumps({
-            "command": "ring",
-            "bus_mac": request.bus_mac,
-            "timestamp": timestamp,
-            "sig": sign_ring_command(
-                secret=_ring_secret(),
-                bus_mac=request.bus_mac,
-                timestamp=timestamp,
+        mqtt_client.publish(
+            constants.ring_topic_for_bus(request.bus_mac),
+            json.dumps(
+                {
+                    "command": "ring",
+                    "bus_mac": request.bus_mac,
+                    "timestamp": timestamp,
+                    "sig": sign_ring_command(
+                        secret=_ring_secret(),
+                        bus_mac=request.bus_mac,
+                        timestamp=timestamp,
+                    ),
+                },
+                separators=(",", ":"),
             ),
-        }))
+        )
         return {"success": True, "message": f"Ring signal sent to {request.bus_mac}"}
     except RideSessionRateLimitError as e:
         raise HTTPException(status_code=429, detail=str(e))

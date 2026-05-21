@@ -220,7 +220,11 @@ def publish_reset_count_command(
             ),
         }
         topic = constants.ring_topic_for_bus(target)
-        publish_info = client.publish(topic, json.dumps(payload), qos=1)
+        publish_info = client.publish(
+            topic,
+            json.dumps(payload, separators=(",", ":")),
+            qos=1,
+        )
         rc = getattr(publish_info, "rc", None)
         sent = rc == mqtt.MQTT_ERR_SUCCESS or rc == 0
         result["targets"].append({
