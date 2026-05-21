@@ -244,7 +244,7 @@ class _DeveloperSettingsScreenState
     }
 
     setState(() => _isResettingPassengerCount = true);
-    final updatedBus =
+    final resetResult =
         await ref.read(apiServiceProvider).resetDeveloperBusPassengerCount(
               bus.busMac,
             );
@@ -253,16 +253,23 @@ class _DeveloperSettingsScreenState
     }
     setState(() => _isResettingPassengerCount = false);
 
-    if (updatedBus == null) {
+    if (resetResult == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to reset passenger count.')),
       );
       return;
     }
 
+    final updatedBus = resetResult.bus;
     ref.read(dataProvider.notifier).updateBusLocally(updatedBus);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${updatedBus.busName} passenger count reset.')),
+      SnackBar(
+        content: Text(
+          resetResult.resetCommandSent
+              ? '${updatedBus.busName} passenger count reset.'
+              : '${updatedBus.busName} set to 0 locally, but ESP32-CAM reset command was not sent. Check MQTT and command secret.',
+        ),
+      ),
     );
   }
 
