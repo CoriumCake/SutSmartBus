@@ -75,6 +75,7 @@ char mqttStatusTopic[96];
 char mqttStatusOnlinePayload[256];
 char mqttStatusOfflinePayload[256];
 char mqttRingTopic[96];
+char mqttBusIdCommandTopic[96];
 unsigned long lastAcceptedRingTimestamp = 0;
 
 PsychicMqttClient mqttClient;
@@ -319,14 +320,14 @@ const char* ringCommandSecret() {
   return API_KEY;
 }
 
-String computeRingSignature(const char* busMac, unsigned long timestamp) {
+String computeCommandSignature(const char* command, const char* busMac, unsigned long timestamp) {
   const char* secret = ringCommandSecret();
   if (secret == nullptr || strlen(secret) == 0) {
     return "";
   }
 
   char payload[96];
-  snprintf(payload, sizeof(payload), "ring|%s|%lu", busMac, timestamp);
+  snprintf(payload, sizeof(payload), "%s|%s|%lu", command, busMac, timestamp);
 
   const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
   if (mdInfo == nullptr) {
@@ -354,31 +355,59 @@ String computeRingSignature(const char* busMac, unsigned long timestamp) {
   return String(hex);
 }
 
+String computeRingSignature(const char* busMac, unsigned long timestamp) {
+  return computeCommandSignature("ring", busMac, timestamp);
+}
+
+bool matchesBusIdentity(const String& target) {
+  if (target == reported_bus_mac || target == bus_mac) return true;
+  if (strlen(BUS_ID_ALIAS) > 0 && target == BUS_ID_ALIAS) return true;
+  if (strlen(BUS_NAME_ALIAS) > 0 && target == BUS_NAME_ALIAS) return true;
+  return false;
+}
+
+void resetPassengerCount(const char* reason) {
+  passengerCount = 0;
+  savePassengerCount();
+  currentState = 0;
+  clearStartTime = 0;
+  publishStatus();
+  Serial.printf("🔄 Passenger count reset (%s)\n", reason);
+}
+
 void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
   String message = String(payload);
-  if (String(topic) == mqttRingTopic) {
+  String topicString = String(topic);
+  if (topicString == mqttRingTopic || topicString == mqttBusIdCommandTopic) {
     bool isRingCommand = message.indexOf("\"command\":\"ring\"") >= 0;
+    bool isResetCountCommand = message.indexOf("\"command\":\"reset_count\"") >= 0;
+    const char* commandName = isResetCountCommand ? "reset_count" : "ring";
     String targetBusMac = extractJsonStringField(message, "bus_mac");
     unsigned long timestamp = extractJsonUnsignedField(message, "timestamp");
     String signature = extractJsonStringField(message, "sig");
-    bool matchesBusMac = targetBusMac == reported_bus_mac || targetBusMac == bus_mac;
+    bool matchesBusMac = matchesBusIdentity(targetBusMac);
     bool validTimestamp = timestamp > lastAcceptedRingTimestamp;
     bool validSignature = signature.length() > 0 &&
-                          signature == computeRingSignature(targetBusMac.c_str(), timestamp);
+                          signature == computeCommandSignature(commandName, targetBusMac.c_str(), timestamp);
     bool acceptsSignature = validSignature || RING_ALLOW_UNSIGNED_COMMANDS;
 
-    if (isRingCommand && matchesBusMac && validTimestamp && acceptsSignature) {
+    if ((isRingCommand || isResetCountCommand) && matchesBusMac && validTimestamp && acceptsSignature) {
       lastAcceptedRingTimestamp = timestamp;
-      ringPending = true;
-      Serial.printf(
-        "Ring command accepted for %s%s\n",
-        targetBusMac.c_str(),
-        validSignature ? "" : " without signature verification"
-      );
+      if (isResetCountCommand) {
+        resetPassengerCount("parking command");
+      } else {
+        ringPending = true;
+        Serial.printf(
+          "Ring command accepted for %s%s\n",
+          targetBusMac.c_str(),
+          validSignature ? "" : " without signature verification"
+        );
+      }
     } else {
       Serial.printf(
-        "Ring command ignored: command=%d mac=%d timestamp=%d signature=%d allow_unsigned=%d topic=%s target=%s\n",
+        "Command ignored: ring=%d reset=%d mac=%d timestamp=%d signature=%d allow_unsigned=%d topic=%s target=%s\n",
         isRingCommand,
+        isResetCountCommand,
         matchesBusMac,
         validTimestamp,
         validSignature,
@@ -461,6 +490,9 @@ void setupMQTT() {
     mqttNeedsStopBeforeReconnect = false;
     Serial.println("✅ MQTT Connected");
     mqttClient.subscribe(mqttRingTopic, 1);
+    if (strlen(mqttBusIdCommandTopic) > 0) {
+      mqttClient.subscribe(mqttBusIdCommandTopic, 1);
+    }
     mqttClient.subscribe(MQTT_TOPIC_OTA, 1);
     publishStatus();
   });
@@ -483,7 +515,15 @@ void setupMQTT() {
   mqttClient.setClientId(mqttClientId);
   snprintf(mqttStatusTopic, sizeof(mqttStatusTopic), "sut/bus/%s/status", reported_bus_mac);
   snprintf(mqttRingTopic, sizeof(mqttRingTopic), "%s/%s/ring", MQTT_TOPIC_RING_PREFIX, reported_bus_mac);
+  if (strlen(BUS_ID_ALIAS) > 0) {
+    snprintf(mqttBusIdCommandTopic, sizeof(mqttBusIdCommandTopic), "%s/%s/ring", MQTT_TOPIC_RING_PREFIX, BUS_ID_ALIAS);
+  } else {
+    mqttBusIdCommandTopic[0] = '\0';
+  }
   Serial.printf("MQTT Ring topic: %s\n", mqttRingTopic);
+  if (strlen(mqttBusIdCommandTopic) > 0) {
+    Serial.printf("MQTT Bus ID command topic: %s\n", mqttBusIdCommandTopic);
+  }
   buildStatusPayload(true, mqttStatusOnlinePayload, sizeof(mqttStatusOnlinePayload));
   buildStatusPayload(false, mqttStatusOfflinePayload, sizeof(mqttStatusOfflinePayload));
   mqttClient.setWill(mqttStatusTopic, 1, true, mqttStatusOfflinePayload);

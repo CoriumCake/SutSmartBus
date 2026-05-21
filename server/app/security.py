@@ -8,9 +8,24 @@ from time import monotonic
 from fastapi import HTTPException
 
 
-def sign_ring_command(*, secret: str, bus_mac: str, timestamp: int) -> str:
-    payload = f"ring|{bus_mac}|{timestamp}"
+def sign_bus_command(
+    *,
+    command: str,
+    secret: str,
+    bus_mac: str,
+    timestamp: int,
+) -> str:
+    payload = f"{command}|{bus_mac}|{timestamp}"
     return hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), sha256).hexdigest()
+
+
+def sign_ring_command(*, secret: str, bus_mac: str, timestamp: int) -> str:
+    return sign_bus_command(
+        command="ring",
+        secret=secret,
+        bus_mac=bus_mac,
+        timestamp=timestamp,
+    )
 
 
 @dataclass(frozen=True)

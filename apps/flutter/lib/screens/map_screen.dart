@@ -897,6 +897,21 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _startRide(IncomingBus busInfo) async {
+    final passengerCount = busInfo.bus.personCount;
+    if (passengerCount == null || passengerCount <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            passengerCount == null
+                ? 'Passenger count is not available yet.'
+                : 'Cannot start ride while the bus is empty.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final userLocation = _userLocation;
     if (userLocation == null) {
       if (!mounted) return;
@@ -2424,10 +2439,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           )
         : null;
     final actionBus = ridingBus ?? displayBus?.bus;
-    final canRide = displayBus != null &&
+    final isRideDistanceReady = displayBus != null &&
         _effectiveRideDistanceM(displayBus.distanceM.toDouble()) <=
             _rideDetectionDistanceM &&
         _isRideReadyFor(displayBus.bus.busMac);
+    final ridePassengerCount = displayBus?.bus.personCount;
+    final hasRidePassengerCount = ridePassengerCount != null;
+    final hasRidePassengers = (ridePassengerCount ?? 0) > 0;
+    final canRide = isRideDistanceReady && hasRidePassengers;
+    final rideButtonLabel = _isStartingRide
+        ? 'STARTING...'
+        : !isRideDistanceReady
+            ? 'GET CLOSER TO RIDE'
+            : !hasRidePassengerCount
+                ? 'COUNT UNKNOWN'
+                : !hasRidePassengers
+                    ? 'BUS EMPTY'
+                    : 'RIDE';
+    final rideButtonIcon = _isStartingRide
+        ? Icons.hourglass_top_rounded
+        : !isRideDistanceReady
+            ? Icons.near_me_rounded
+            : !hasRidePassengers
+                ? Icons.people_alt_rounded
+                : Icons.airport_shuttle_rounded;
     final hasOfflineCandidates =
         nearbyCandidateBuses.any((bus) => bus.isOffline);
     final shouldShowOfflineState = _ridingBusMac != null
@@ -2890,6 +2925,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           : const Color(0xFFE2E8F0),
                       foregroundColor:
                           canRide ? Colors.black : const Color(0xFF94A3B8),
+                      disabledBackgroundColor: const Color(0xFFE2E8F0),
+                      disabledForegroundColor: const Color(0xFF94A3B8),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -2899,20 +2936,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          _isStartingRide
-                              ? Icons.hourglass_top_rounded
-                              : canRide
-                                  ? Icons.airport_shuttle_rounded
-                                  : Icons.near_me_rounded,
+                          rideButtonIcon,
                           size: 20,
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _isStartingRide
-                              ? 'STARTING...'
-                              : canRide
-                                  ? 'RIDE'
-                                  : 'GET CLOSER TO RIDE',
+                          rideButtonLabel,
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
