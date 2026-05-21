@@ -39,31 +39,60 @@ bool IS_RIGHT_TO_LEFT_ENTER = false;
 
 // Detection Constants (Optimized)
 int MOTION_THRESHOLD = 24;      // Pick up softer per-pixel changes from partial crossings
-int TRIGGER_THRESHOLD_L = 520;  // Keep both sides similarly sensitive so exits are not missed
-int TRIGGER_THRESHOLD_R = 520;
-int NOISE_THRESHOLD_BOTH = 1800; // Re-zero only when both zones are heavily disturbed
-int NOISE_THRESHOLD_TOTAL = 6200; // Whole-frame disturbance threshold
+int TRIGGER_THRESHOLD_L = 500;  // Keep left firm enough to avoid false enter starts
+int TRIGGER_THRESHOLD_R = 440;  // Exits start on the right, which is often partially occluded
+int NOISE_THRESHOLD_BOTH = 3000; // Re-zero only when both zones are heavily disturbed
+int NOISE_THRESHOLD_TOTAL = 8800; // Whole-frame disturbance threshold
+int NOISE_THRESHOLD_ACTIVE_TOTAL = 9400; // Higher reset threshold while a crossing is active
 int CLEAR_THRESHOLD_L = 180;    // Quiet level used to remove post-count side blocking
 int CLEAR_THRESHOLD_R = 180;
 int START_DOMINANCE_MARGIN = 120; // Motion lead needed to arm from one side when both fire
-int CROSS_DOMINANCE_MARGIN = 120; // Motion lead needed to finish crossing when both fire
+int EXIT_START_BIAS = 360;      // Prefer R->L exits when both zones start nearly together
+int EXIT_END_THRESHOLD = 420;   // Exit finish can be softer than a fresh entry-side start
+int EXIT_END_BIAS = 360;
 unsigned long CLEAR_HOLD_MS = 250; // Quiet period before same-side blocking is removed
 int ZONE_L = 60;                // Left line boundary (0-160)
 int ZONE_R = 100;               // Right line boundary (0-160)
 unsigned long COOLDOWN = 450;   // ms between counts
 unsigned long MIN_CROSSING_MS = 120; // Ignore one-frame flips from leftover far-side motion
-unsigned long TRACK_TIMEOUT_MS = 1800; // Drop a partial crossing if it never reaches the far side
-unsigned long SAME_SIDE_REARM_MS = 900; // Allow immediate opposite-flow starts after a short hold
+unsigned long TRACK_TIMEOUT_MS = 3200; // Drop a partial crossing if it never reaches the far side
+unsigned long SAME_SIDE_START_GAP_MS = 900; // Require a real gap before queueing another unresolved same-side start
+unsigned long TRAIN_DIRECTION_LOCK_MS = 1200; // Prefer one-way passenger trains over instant opposite starts
+unsigned long MIN_ZONE_PULSE_GAP_MS = 300; // Debounce repeated pulses from one body in the same zone
+unsigned long TRAIN_PULSE_GAP_L_MS = 550; // Fastest believable gap between two people in one zone
+unsigned long TRAIN_PULSE_GAP_R_MS = 420;
+int PULSE_REARM_THRESHOLD_L = 360; // Zone must settle near this level before a fresh hard pulse
+int PULSE_REARM_THRESHOLD_R = 300;
+int TRAIN_PULSE_DROP_L = 480;      // Drop-and-rise shape used to split a dense passenger train
+int TRAIN_PULSE_DROP_R = 320;
+int TRAIN_PULSE_RISE_L = 300;
+int TRAIN_PULSE_RISE_R = 220;
+const uint8_t MAX_PENDING_TRACKS = 5;
 const int MAX_PASSENGER_COUNT = 40;
+
+struct ZonePulseState {
+  bool armed;
+  int peak;
+  int valley;
+  unsigned long lastPulseAt;
+};
 
 // Globals
 int passengerCount = 0;
-int currentState = 0;           // 0=Ready, 1=tracking from left, 2=tracking from right
-int blockedStartSide = 0;       // Last ending side; avoids double-counting the same person
+int currentState = 0;           // 0=Ready, 1=left queue, 2=right queue, 3=both queues
+int blockedStartSide = 0;       // Last ending side; suppresses far-side tail motion until zones clear
 unsigned long lastCountTime = 0;
-unsigned long lastMotionTime = 0;
-unsigned long trackStartTime = 0;
 unsigned long clearStartTime = 0;
+unsigned long pendingLeftStarts[MAX_PENDING_TRACKS];
+unsigned long pendingRightStarts[MAX_PENDING_TRACKS];
+uint8_t pendingLeftCount = 0;
+uint8_t pendingRightCount = 0;
+uint8_t deferredLeftEndCount = 0;
+uint8_t deferredRightEndCount = 0;
+ZonePulseState leftZonePulse = {true, 0, 0, 0};
+ZonePulseState rightZonePulse = {true, 0, 0, 0};
+int lastFlowStartSide = 0;
+unsigned long directionLockUntil = 0;
 uint8_t background[160 * 80];   // Background reference (160x80 ROI)
 char bus_mac[18];
 char reported_bus_mac[18];
@@ -233,30 +262,6 @@ int dominantMotionSide(int motionL, int motionR, bool triggerL, bool triggerR) {
   return 0;
 }
 
-bool crossedToSide(int side, int motionL, int motionR, bool triggerL, bool triggerR) {
-  if (side == 1) {
-    return triggerL && (!triggerR || motionL >= motionR + CROSS_DOMINANCE_MARGIN);
-  }
-  if (side == 2) {
-    return triggerR && (!triggerL || motionR >= motionL + CROSS_DOMINANCE_MARGIN);
-  }
-  return false;
-}
-
-bool oppositeSideQuiet(int side, int motionL, int motionR) {
-  if (side == 1) return motionR < CLEAR_THRESHOLD_R;
-  if (side == 2) return motionL < CLEAR_THRESHOLD_L;
-  return true;
-}
-
-bool canStartFromSide(int side, int motionL, int motionR, unsigned long now) {
-  if (side == 0) return false;
-  if (blockedStartSide != side) return true;
-
-  return (now - lastCountTime >= SAME_SIDE_REARM_MS) &&
-         oppositeSideQuiet(side, motionL, motionR);
-}
-
 void recordPassengerCrossing(bool leftToRight) {
   bool isEnter = leftToRight ? !IS_RIGHT_TO_LEFT_ENTER : IS_RIGHT_TO_LEFT_ENTER;
   const char* direction = isEnter ? "enter" : "exit";
@@ -267,18 +272,317 @@ void recordPassengerCrossing(bool leftToRight) {
     if (passengerCount > 0) passengerCount--;
   }
 
-  Serial.printf("%s detected. Total: %d\n", isEnter ? "ENTER" : "EXIT", passengerCount);
+  Serial.printf("%s detected. Total: %d\n", isEnter ? "✅ENTER" : "❌EXIT", passengerCount);
   lastPassengerEventIsEnter = isEnter;
   hasPassengerEvent = true;
-  lastPassengerEventAt = millis();
+  unsigned long eventTime = millis();
+  lastPassengerEventAt = eventTime;
   passengerEventSeq++;
   sendMQTT(direction);
   savePassengerCount();
   publishStatus();
-  lastCountTime = millis();
+  lastCountTime = eventTime;
   blockedStartSide = leftToRight ? 2 : 1;
-  trackStartTime = 0;
+  lastFlowStartSide = leftToRight ? 1 : 2;
+  directionLockUntil = eventTime + TRAIN_DIRECTION_LOCK_MS;
   clearStartTime = 0;
+}
+
+const char* sideName(int side) {
+  if (side == 1) return "left";
+  if (side == 2) return "right";
+  return "none";
+}
+
+void resetZonePulse(ZonePulseState &zone) {
+  zone.armed = true;
+  zone.peak = 0;
+  zone.valley = 0;
+  zone.lastPulseAt = 0;
+}
+
+void syncTrackState() {
+  if (pendingLeftCount > 0 && pendingRightCount > 0) {
+    currentState = 3;
+  } else if (pendingLeftCount > 0) {
+    currentState = 1;
+  } else if (pendingRightCount > 0) {
+    currentState = 2;
+  } else {
+    currentState = 0;
+  }
+}
+
+void resetTrackingState() {
+  currentState = 0;
+  blockedStartSide = 0;
+  clearStartTime = 0;
+  pendingLeftCount = 0;
+  pendingRightCount = 0;
+  deferredLeftEndCount = 0;
+  deferredRightEndCount = 0;
+  lastFlowStartSide = 0;
+  directionLockUntil = 0;
+  resetZonePulse(leftZonePulse);
+  resetZonePulse(rightZonePulse);
+}
+
+void dropOldestPending(unsigned long queue[], uint8_t &count) {
+  if (count == 0) return;
+  for (uint8_t i = 1; i < count; i++) {
+    queue[i - 1] = queue[i];
+  }
+  count--;
+}
+
+unsigned long popPending(unsigned long queue[], uint8_t &count) {
+  if (count == 0) return 0;
+  unsigned long startedAt = queue[0];
+  dropOldestPending(queue, count);
+  return startedAt;
+}
+
+void enqueuePending(unsigned long queue[], uint8_t &count, unsigned long now, const char* label) {
+  if (count >= MAX_PENDING_TRACKS) {
+    dropOldestPending(queue, count);
+    Serial.printf("Track queue overflow: dropped oldest %s start\n", label);
+  }
+  queue[count++] = now;
+  syncTrackState();
+  Serial.printf("Track start: %s qL:%u qR:%u\n", label, (unsigned)pendingLeftCount, (unsigned)pendingRightCount);
+}
+
+bool elapsedAfter(unsigned long timestamp, unsigned long now, unsigned long interval) {
+  if (timestamp == 0) return true;
+  long elapsed = (long)(now - timestamp);
+  return elapsed >= 0 && (unsigned long)elapsed > interval;
+}
+
+bool cooldownReady(unsigned long now) {
+  return elapsedAfter(lastCountTime, now, COOLDOWN);
+}
+
+bool canQueueStartFromSide(int side, unsigned long now) {
+  uint8_t pendingCount = side == 1 ? pendingLeftCount : pendingRightCount;
+  uint8_t finishedCount = side == 1 ? deferredRightEndCount : deferredLeftEndCount;
+  unsigned long* starts = side == 1 ? pendingLeftStarts : pendingRightStarts;
+
+  if (pendingCount == 0) return true;
+
+  bool allPendingAlreadyReachedFarSide = finishedCount >= pendingCount;
+  bool latestStartIsOldEnough = elapsedAfter(starts[pendingCount - 1], now, SAME_SIDE_START_GAP_MS);
+  if (allPendingAlreadyReachedFarSide && latestStartIsOldEnough && cooldownReady(now)) {
+    return true;
+  }
+
+  Serial.printf("Track start ignored: %s already pending qL:%u qR:%u\n",
+                sideName(side),
+                (unsigned)pendingLeftCount,
+                (unsigned)pendingRightCount);
+  return false;
+}
+
+void expirePending(unsigned long queue[], uint8_t &count, unsigned long now, const char* label) {
+  while (count > 0 && elapsedAfter(queue[0], now, TRACK_TIMEOUT_MS)) {
+    dropOldestPending(queue, count);
+    Serial.printf("Track reset: %s timeout\n", label);
+  }
+  syncTrackState();
+}
+
+void queueEndPulse(uint8_t &count, uint8_t pendingCount, const char* label) {
+  if (count < pendingCount) {
+    count++;
+  } else if (pendingCount > 0) {
+    Serial.printf("Track end pulse ignored: %s queue full\n", label);
+  }
+}
+
+void trimDeferredEndPulses() {
+  if (deferredRightEndCount > pendingLeftCount) deferredRightEndCount = pendingLeftCount;
+  if (deferredLeftEndCount > pendingRightCount) deferredLeftEndCount = pendingRightCount;
+}
+
+void resolveDeferredCrossings(unsigned long now) {
+  trimDeferredEndPulses();
+
+  bool canResolveLeftToRight = deferredRightEndCount > 0 &&
+                               pendingLeftCount > 0 &&
+                               elapsedAfter(pendingLeftStarts[0], now, MIN_CROSSING_MS) &&
+                               cooldownReady(now);
+  bool canResolveRightToLeft = deferredLeftEndCount > 0 &&
+                               pendingRightCount > 0 &&
+                               elapsedAfter(pendingRightStarts[0], now, MIN_CROSSING_MS) &&
+                               cooldownReady(now);
+
+  if (canResolveLeftToRight &&
+      (!canResolveRightToLeft || pendingLeftStarts[0] <= pendingRightStarts[0])) {
+    popPending(pendingLeftStarts, pendingLeftCount);
+    deferredRightEndCount--;
+    recordPassengerCrossing(true);
+    syncTrackState();
+    return;
+  }
+
+  if (canResolveRightToLeft) {
+    popPending(pendingRightStarts, pendingRightCount);
+    deferredLeftEndCount--;
+    recordPassengerCrossing(false);
+    syncTrackState();
+    return;
+  }
+
+  syncTrackState();
+}
+
+bool directionLockActive(unsigned long now) {
+  return directionLockUntil != 0 && (long)(directionLockUntil - now) > 0;
+}
+
+bool canStartTrainFromSide(int side, unsigned long now) {
+  if (blockedStartSide == side) {
+    Serial.printf("Track start ignored: %s blocked until clear\n", sideName(side));
+    return false;
+  }
+  if (!directionLockActive(now)) return true;
+  if (lastFlowStartSide == 0 || side == lastFlowStartSide) return true;
+  Serial.printf("Track start ignored: %s locked by %s train\n", sideName(side), sideName(lastFlowStartSide));
+  return false;
+}
+
+int exitStartSide() {
+  return IS_RIGHT_TO_LEFT_ENTER ? 1 : 2;
+}
+
+int entryStartSide() {
+  return IS_RIGHT_TO_LEFT_ENTER ? 2 : 1;
+}
+
+bool updateZonePulse(ZonePulseState &zone,
+                     int motion,
+                     bool trigger,
+                     int rearmThreshold,
+                     unsigned long trainPulseGap,
+                     int trainPulseDrop,
+                     int trainPulseRise,
+                     unsigned long now) {
+  if (motion < rearmThreshold) {
+    zone.armed = true;
+    zone.peak = motion;
+    zone.valley = motion;
+  } else {
+    if (motion > zone.peak) zone.peak = motion;
+    if (motion < zone.valley) zone.valley = motion;
+  }
+
+  if (!trigger || !elapsedAfter(zone.lastPulseAt, now, MIN_ZONE_PULSE_GAP_MS)) {
+    return false;
+  }
+
+  bool hardPulse = zone.armed;
+  bool trainPulse = !zone.armed &&
+                    elapsedAfter(zone.lastPulseAt, now, trainPulseGap) &&
+                    zone.peak - zone.valley >= trainPulseDrop &&
+                    motion >= zone.valley + trainPulseRise;
+
+  if (!hardPulse && !trainPulse) return false;
+
+  zone.armed = false;
+  zone.peak = motion;
+  zone.valley = motion;
+  zone.lastPulseAt = now;
+  return true;
+}
+
+void handleZonePulse(int side, unsigned long now) {
+  if (side == 1) {
+    if (pendingRightCount > 0) {
+      queueEndPulse(deferredLeftEndCount, pendingRightCount, "left");
+      resolveDeferredCrossings(now);
+      return;
+    }
+
+    if (canStartTrainFromSide(1, now) && canQueueStartFromSide(1, now)) {
+      enqueuePending(pendingLeftStarts, pendingLeftCount, now, "left");
+    }
+    return;
+  }
+
+  if (side == 2) {
+    if (pendingLeftCount > 0) {
+      queueEndPulse(deferredRightEndCount, pendingLeftCount, "right");
+      resolveDeferredCrossings(now);
+      return;
+    }
+
+    if (canStartTrainFromSide(2, now) && canQueueStartFromSide(2, now)) {
+      enqueuePending(pendingRightStarts, pendingRightCount, now, "right");
+    }
+  }
+}
+
+void processZonePulses(bool pulseL, bool pulseR, int motionL, int motionR, unsigned long now) {
+  if (pulseL && pulseR) {
+    bool handledL = false;
+    bool handledR = false;
+
+    // In a passenger train, one side may be the previous person's exit pulse
+    // while the other side is the next person's start pulse. Resolve exits first.
+    if (pendingRightCount > 0) {
+      handleZonePulse(1, now);
+      handledL = true;
+    }
+    if (pendingLeftCount > 0) {
+      handleZonePulse(2, now);
+      handledR = true;
+    }
+
+    if (!handledL && !handledR) {
+      int exitSide = exitStartSide();
+      int entrySide = entryStartSide();
+      int exitMotion = exitSide == 1 ? motionL : motionR;
+      int entryMotion = entrySide == 1 ? motionL : motionR;
+
+      if (exitMotion + EXIT_START_BIAS >= entryMotion) {
+        handleZonePulse(exitSide, now);
+      } else if (entryMotion >= exitMotion + START_DOMINANCE_MARGIN) {
+        handleZonePulse(entrySide, now);
+      }
+      return;
+    }
+
+    if (!handledL) handleZonePulse(1, now);
+    if (!handledR) handleZonePulse(2, now);
+    return;
+  }
+
+  if (pulseL) handleZonePulse(1, now);
+  if (pulseR) handleZonePulse(2, now);
+}
+
+void processSustainedCrossings(int motionL, int motionR, bool triggerL, bool triggerR, unsigned long now) {
+  bool rightToLeftIsExit = exitStartSide() == 2;
+  bool leftToRightIsExit = exitStartSide() == 1;
+  bool leftCompletesRightStart = rightToLeftIsExit
+                                 ? motionL > EXIT_END_THRESHOLD && motionL + EXIT_END_BIAS >= motionR
+                                 : triggerL && motionL + START_DOMINANCE_MARGIN >= motionR;
+  bool rightCompletesLeftStart = leftToRightIsExit
+                                 ? motionR > EXIT_END_THRESHOLD && motionR + EXIT_END_BIAS >= motionL
+                                 : triggerR && motionR + START_DOMINANCE_MARGIN >= motionL;
+
+  if (pendingRightCount > 0 &&
+      deferredLeftEndCount < pendingRightCount &&
+      leftCompletesRightStart) {
+    queueEndPulse(deferredLeftEndCount, pendingRightCount, "left sustained");
+  }
+
+  if (pendingLeftCount > 0 &&
+      deferredRightEndCount < pendingLeftCount &&
+      rightCompletesLeftStart) {
+    queueEndPulse(deferredRightEndCount, pendingLeftCount, "right sustained");
+  }
+
+  resolveDeferredCrossings(now);
 }
 
 void buildStatusPayload(bool isOnline, char* buffer, size_t bufferSize) {
@@ -453,10 +757,7 @@ bool matchesBusIdentity(const String& target) {
 void resetPassengerCount(const char* reason) {
   passengerCount = 0;
   savePassengerCount();
-  currentState = 0;
-  blockedStartSide = 0;
-  trackStartTime = 0;
-  clearStartTime = 0;
+  resetTrackingState();
   hasPassengerEvent = false;
   publishStatus();
   Serial.printf("🔄 Passenger count reset (%s)\n", reason);
@@ -926,14 +1227,18 @@ void loop() {
   }
 
   // Noise Filter: only treat it as global noise when both zones surge together.
+  bool activeCrossing = currentState != 0 ||
+                        pendingLeftCount > 0 ||
+                        pendingRightCount > 0 ||
+                        deferredLeftEndCount > 0 ||
+                        deferredRightEndCount > 0;
+  int noiseTotalThreshold = activeCrossing ? NOISE_THRESHOLD_ACTIVE_TOTAL : NOISE_THRESHOLD_TOTAL;
+
   if (motionL > NOISE_THRESHOLD_BOTH &&
       motionR > NOISE_THRESHOLD_BOTH &&
-      (motionL + motionR) > NOISE_THRESHOLD_TOTAL) {
+      (motionL + motionR) > noiseTotalThreshold) {
     bgInitialized = false; 
-    currentState = 0;
-    blockedStartSide = 0;
-    trackStartTime = 0;
-    clearStartTime = 0;
+    resetTrackingState();
     Serial.println("🌫️ Massive Noise - Re-zeroing...");
     esp_camera_fb_return(fb);
     return;
@@ -943,11 +1248,6 @@ void loop() {
   bool triggerR = (motionR > TRIGGER_THRESHOLD_R);
   unsigned long now = millis();
   int dominantSide = dominantMotionSide(motionL, motionR, triggerL, triggerR);
-
-  // Update last motion time for timeout/clear logic
-  if (triggerL || triggerR) {
-    lastMotionTime = now;
-  }
 
   // Debug Print (only on significant motion changes)
   static int lastL = 0, lastR = 0;
@@ -961,55 +1261,44 @@ void loop() {
     lastL = motionL; lastR = motionR;
   }
 
-  // Clear only removes post-count blocking. Tracking itself times out so a
-  // person passing through the center dead zone does not lose their sequence.
+  expirePending(pendingLeftStarts, pendingLeftCount, now, "left");
+  expirePending(pendingRightStarts, pendingRightCount, now, "right");
+  trimDeferredEndPulses();
+  resolveDeferredCrossings(now);
+
   bool zonesQuiet = (motionL < CLEAR_THRESHOLD_L && motionR < CLEAR_THRESHOLD_R);
-  if (currentState == 0 && blockedStartSide != 0 && zonesQuiet) {
+  bool hadArmedState = blockedStartSide != 0 || lastFlowStartSide != 0 || directionLockUntil != 0;
+  if (currentState == 0 && zonesQuiet && hadArmedState) {
     if (clearStartTime == 0) clearStartTime = now;
-    if (now - clearStartTime >= CLEAR_HOLD_MS) {
+    if (elapsedAfter(clearStartTime, now, CLEAR_HOLD_MS)) {
       blockedStartSide = 0;
+      lastFlowStartSide = 0;
+      directionLockUntil = 0;
       clearStartTime = 0;
       Serial.println("Zones quiet, detector fully re-armed");
     }
-  } else if (!zonesQuiet) {
+  } else if (!zonesQuiet || !hadArmedState) {
     clearStartTime = 0;
   }
 
-  // Re-armable state machine. It counts on a left-dominant -> right-dominant
-  // or right-dominant -> left-dominant crossing, so people can follow each
-  // other without waiting for the whole doorway to become empty.
-  if (currentState == 0) {
-    if (canStartFromSide(dominantSide, motionL, motionR, now)) {
-      currentState = dominantSide;
-      blockedStartSide = 0;
-      clearStartTime = 0;
-      lastMotionTime = now;
-      trackStartTime = now;
-      Serial.printf("Track start: %s\n", currentState == 1 ? "left" : "right");
-    }
-  } else if (currentState == 1) {
-    if (crossedToSide(2, motionL, motionR, triggerL, triggerR) &&
-        now - trackStartTime >= MIN_CROSSING_MS &&
-        now - lastCountTime > COOLDOWN) {
-      recordPassengerCrossing(true);
-      currentState = 0;
-    } else if (now - lastMotionTime > TRACK_TIMEOUT_MS) {
-      currentState = 0;
-      trackStartTime = 0;
-      Serial.println("Track reset: left timeout");
-    }
-  } else if (currentState == 2) {
-    if (crossedToSide(1, motionL, motionR, triggerL, triggerR) &&
-        now - trackStartTime >= MIN_CROSSING_MS &&
-        now - lastCountTime > COOLDOWN) {
-      recordPassengerCrossing(false);
-      currentState = 0;
-    } else if (now - lastMotionTime > TRACK_TIMEOUT_MS) {
-      currentState = 0;
-      trackStartTime = 0;
-      Serial.println("Track reset: right timeout");
-    }
-  }
+  bool pulseL = updateZonePulse(leftZonePulse,
+                                motionL,
+                                triggerL,
+                                PULSE_REARM_THRESHOLD_L,
+                                TRAIN_PULSE_GAP_L_MS,
+                                TRAIN_PULSE_DROP_L,
+                                TRAIN_PULSE_RISE_L,
+                                now);
+  bool pulseR = updateZonePulse(rightZonePulse,
+                                motionR,
+                                triggerR,
+                                PULSE_REARM_THRESHOLD_R,
+                                TRAIN_PULSE_GAP_R_MS,
+                                TRAIN_PULSE_DROP_R,
+                                TRAIN_PULSE_RISE_R,
+                                now);
+  processZonePulses(pulseL, pulseR, motionL, motionR, now);
+  processSustainedCrossings(motionL, motionR, triggerL, triggerR, now);
 
   esp_camera_fb_return(fb);
   
