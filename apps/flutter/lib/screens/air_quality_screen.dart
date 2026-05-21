@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import '../providers/data_provider.dart';
+import '../providers/developer_settings_provider.dart';
 import '../providers/debug_provider.dart';
+import '../providers/user_location_provider.dart';
 import '../models/bus.dart';
 import '../utils/air_quality_utils.dart';
+import '../utils/no_gps_bus_location.dart';
 import '../widgets/air_quality_map.dart';
 
 class AirQualityScreen extends ConsumerStatefulWidget {
@@ -19,9 +23,23 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Bus> buses = ref.watch(busesProvider);
+    final developerSettings = ref.watch(developerSettingsProvider);
+    final userLocation = developerSettings.noGpsModeEnabled &&
+            developerSettings.assignedBusMac?.isNotEmpty == true
+        ? ref.watch(userLocationProvider).valueOrNull
+        : null;
+    final positionedBuses = applyNoGpsAssignedBusLocation(
+      buses: buses,
+      noGpsModeEnabled: developerSettings.noGpsModeEnabled,
+      assignedBusMac: developerSettings.assignedBusMac,
+      userLocation: userLocation == null
+          ? null
+          : LatLng(userLocation.latitude, userLocation.longitude),
+    );
     final bool debugMode = ref.watch(debugProvider).debugMode;
-    final List<Bus> visibleBuses =
-        debugMode ? buses : buses.where((bus) => !bus.isDebugBus).toList();
+    final List<Bus> visibleBuses = debugMode
+        ? positionedBuses
+        : positionedBuses.where((bus) => !bus.isDebugBus).toList();
     final ThemeData theme = Theme.of(context);
 
     return Scaffold(

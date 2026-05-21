@@ -9,6 +9,7 @@ import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../services/api_service.dart';
 import '../services/mqtt_service.dart';
+import 'developer_settings_provider.dart';
 
 const int _maxBusPassengerCount = 40;
 const int _totalBusCapacity = 40;
@@ -96,9 +97,19 @@ class DataNotifier extends StateNotifier<DataState> {
   Map<String, String> _busRouteMappings = {};
   final Map<String, Map<String, bool>> _componentOnlineByBus = {};
   final Map<String, int> _lastAuthoritativePassengerCountAt = {};
+  bool _resetPassengerCountAtTerminalStop;
 
-  DataNotifier(this._api, this._mqtt) : super(DataState()) {
+  DataNotifier(
+    this._api,
+    this._mqtt, {
+    bool resetPassengerCountAtTerminalStop = true,
+  })  : _resetPassengerCountAtTerminalStop = resetPassengerCountAtTerminalStop,
+        super(DataState()) {
     _initialize();
+  }
+
+  void setResetPassengerCountAtTerminalStop(bool enabled) {
+    _resetPassengerCountAtTerminalStop = enabled;
   }
 
   Future<void> _initialize() async {
@@ -499,7 +510,8 @@ class DataNotifier extends StateNotifier<DataState> {
         count,
         lat: payloadLat,
         lon: payloadLon,
-        resetAtParking: hasPayloadLocation,
+        resetAtParking:
+            _resetPassengerCountAtTerminalStop && hasPayloadLocation,
       );
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
         busId: busId ?? buses[idx].busId,
@@ -520,7 +532,8 @@ class DataNotifier extends StateNotifier<DataState> {
         count,
         lat: payloadLat,
         lon: payloadLon,
-        resetAtParking: hasPayloadLocation,
+        resetAtParking:
+            _resetPassengerCountAtTerminalStop && hasPayloadLocation,
       );
       final effectiveBusId = !_isInvalidBusId(busId) ? busId!.trim() : busMac;
       final nextBus = _applyRouteMapping(Bus(
@@ -604,7 +617,8 @@ class DataNotifier extends StateNotifier<DataState> {
           : _normalizePassengerCount(rawPersonCount,
               lat: payloadLat,
               lon: payloadLon,
-              resetAtParking: hasPayloadLocation);
+              resetAtParking:
+                  _resetPassengerCountAtTerminalStop && hasPayloadLocation);
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
         busId: busId ?? buses[idx].busId,
         busName: busName?.isNotEmpty == true ? busName! : buses[idx].busName,
@@ -643,7 +657,8 @@ class DataNotifier extends StateNotifier<DataState> {
               rawNewPersonCount,
               lat: payloadLat,
               lon: payloadLon,
-              resetAtParking: hasPayloadLocation,
+              resetAtParking:
+                  _resetPassengerCountAtTerminalStop && hasPayloadLocation,
             );
       final nextBus = _applyRouteMapping(Bus(
         id: effectiveBusId ?? effectiveBusMac,
@@ -776,7 +791,8 @@ class DataNotifier extends StateNotifier<DataState> {
               rawPersonCount,
               lat: payloadLat,
               lon: payloadLon,
-              resetAtParking: hasPayloadLocation,
+              resetAtParking:
+                  _resetPassengerCountAtTerminalStop && hasPayloadLocation,
             );
       final seatsAvailable = normalizedPersonCount != null
           ? (_totalBusCapacity - normalizedPersonCount)
@@ -808,7 +824,8 @@ class DataNotifier extends StateNotifier<DataState> {
               rawPersonCount,
               lat: payloadLat,
               lon: payloadLon,
-              resetAtParking: hasPayloadLocation,
+              resetAtParking:
+                  _resetPassengerCountAtTerminalStop && hasPayloadLocation,
             );
       final seatsAvailable = normalizedPersonCount != null
           ? (_totalBusCapacity - normalizedPersonCount)
@@ -855,7 +872,19 @@ final mqttServiceProvider = Provider<MqttService>((ref) => MqttService());
 final dataProvider = StateNotifierProvider<DataNotifier, DataState>((ref) {
   final api = ref.watch(apiServiceProvider);
   final mqtt = ref.watch(mqttServiceProvider);
-  return DataNotifier(api, mqtt);
+  final notifier = DataNotifier(
+    api,
+    mqtt,
+    resetPassengerCountAtTerminalStop:
+        ref.read(developerSettingsProvider).resetPassengerCountAtTerminalStop,
+  );
+  ref.listen<bool>(
+    developerSettingsProvider.select(
+      (state) => state.resetPassengerCountAtTerminalStop,
+    ),
+    (_, next) => notifier.setResetPassengerCountAtTerminalStop(next),
+  );
+  return notifier;
 });
 
 // Convenience selectors

@@ -39,23 +39,30 @@ bool IS_RIGHT_TO_LEFT_ENTER = false;
 
 // Detection Constants (Optimized)
 int MOTION_THRESHOLD = 24;      // Pick up softer per-pixel changes from partial crossings
-int TRIGGER_THRESHOLD_L = 700;  // Lower left trigger so weaker body motion still arms detection
-int TRIGGER_THRESHOLD_R = 500;  // Right zone remains easier to trigger than left
+int TRIGGER_THRESHOLD_L = 520;  // Keep both sides similarly sensitive so exits are not missed
+int TRIGGER_THRESHOLD_R = 520;
 int NOISE_THRESHOLD_BOTH = 1800; // Re-zero only when both zones are heavily disturbed
 int NOISE_THRESHOLD_TOTAL = 6200; // Whole-frame disturbance threshold
-int CLEAR_THRESHOLD_L = 180;    // Re-arm sooner after lighter motion tails off
+int CLEAR_THRESHOLD_L = 180;    // Quiet level used to remove post-count side blocking
 int CLEAR_THRESHOLD_R = 180;
-unsigned long CLEAR_HOLD_MS = 250; // Quiet period before the detector is ready again
+int START_DOMINANCE_MARGIN = 120; // Motion lead needed to arm from one side when both fire
+int CROSS_DOMINANCE_MARGIN = 120; // Motion lead needed to finish crossing when both fire
+unsigned long CLEAR_HOLD_MS = 250; // Quiet period before same-side blocking is removed
 int ZONE_L = 60;                // Left line boundary (0-160)
 int ZONE_R = 100;               // Right line boundary (0-160)
-unsigned long COOLDOWN = 700;   // ms between counts
+unsigned long COOLDOWN = 450;   // ms between counts
+unsigned long MIN_CROSSING_MS = 120; // Ignore one-frame flips from leftover far-side motion
+unsigned long TRACK_TIMEOUT_MS = 1800; // Drop a partial crossing if it never reaches the far side
+unsigned long SAME_SIDE_REARM_MS = 900; // Allow immediate opposite-flow starts after a short hold
 const int MAX_PASSENGER_COUNT = 40;
 
 // Globals
 int passengerCount = 0;
-int currentState = 0;           // 0=None, 1=Left, 2=Right
+int currentState = 0;           // 0=Ready, 1=tracking from left, 2=tracking from right
+int blockedStartSide = 0;       // Last ending side; avoids double-counting the same person
 unsigned long lastCountTime = 0;
 unsigned long lastMotionTime = 0;
+unsigned long trackStartTime = 0;
 unsigned long clearStartTime = 0;
 uint8_t background[160 * 80];   // Background reference (160x80 ROI)
 char bus_mac[18];
@@ -208,6 +215,62 @@ void sendMQTT(String dir) {
     millis()/1000
   );
   mqttClient.publish(MQTT_TOPIC_DETECTION, 1, false, buf);
+}
+
+int dominantMotionSide(int motionL, int motionR, bool triggerL, bool triggerR) {
+  if (triggerL && !triggerR) return 1;
+  if (triggerR && !triggerL) return 2;
+
+  if (triggerL && triggerR) {
+    if (motionL >= motionR + START_DOMINANCE_MARGIN) return 1;
+    if (motionR >= motionL + START_DOMINANCE_MARGIN) return 2;
+  }
+
+  return 0;
+}
+
+bool crossedToSide(int side, int motionL, int motionR, bool triggerL, bool triggerR) {
+  if (side == 1) {
+    return triggerL && (!triggerR || motionL >= motionR + CROSS_DOMINANCE_MARGIN);
+  }
+  if (side == 2) {
+    return triggerR && (!triggerL || motionR >= motionL + CROSS_DOMINANCE_MARGIN);
+  }
+  return false;
+}
+
+bool oppositeSideQuiet(int side, int motionL, int motionR) {
+  if (side == 1) return motionR < CLEAR_THRESHOLD_R;
+  if (side == 2) return motionL < CLEAR_THRESHOLD_L;
+  return true;
+}
+
+bool canStartFromSide(int side, int motionL, int motionR, unsigned long now) {
+  if (side == 0) return false;
+  if (blockedStartSide != side) return true;
+
+  return (now - lastCountTime >= SAME_SIDE_REARM_MS) &&
+         oppositeSideQuiet(side, motionL, motionR);
+}
+
+void recordPassengerCrossing(bool leftToRight) {
+  bool isEnter = leftToRight ? !IS_RIGHT_TO_LEFT_ENTER : IS_RIGHT_TO_LEFT_ENTER;
+  const char* direction = isEnter ? "enter" : "exit";
+
+  if (isEnter) {
+    if (passengerCount < MAX_PASSENGER_COUNT) passengerCount++;
+  } else {
+    if (passengerCount > 0) passengerCount--;
+  }
+
+  Serial.printf("%s detected. Total: %d\n", isEnter ? "ENTER" : "EXIT", passengerCount);
+  sendMQTT(direction);
+  savePassengerCount();
+  publishStatus();
+  lastCountTime = millis();
+  blockedStartSide = leftToRight ? 2 : 1;
+  trackStartTime = 0;
+  clearStartTime = 0;
 }
 
 void buildStatusPayload(bool isOnline, char* buffer, size_t bufferSize) {
@@ -370,6 +433,8 @@ void resetPassengerCount(const char* reason) {
   passengerCount = 0;
   savePassengerCount();
   currentState = 0;
+  blockedStartSide = 0;
+  trackStartTime = 0;
   clearStartTime = 0;
   publishStatus();
   Serial.printf("🔄 Passenger count reset (%s)\n", reason);
@@ -791,6 +856,8 @@ void loop() {
       (motionL + motionR) > NOISE_THRESHOLD_TOTAL) {
     bgInitialized = false; 
     currentState = 0;
+    blockedStartSide = 0;
+    trackStartTime = 0;
     clearStartTime = 0;
     Serial.println("🌫️ Massive Noise - Re-zeroing...");
     esp_camera_fb_return(fb);
@@ -799,86 +866,73 @@ void loop() {
 
   bool triggerL = (motionL > TRIGGER_THRESHOLD_L);
   bool triggerR = (motionR > TRIGGER_THRESHOLD_R);
+  unsigned long now = millis();
+  int dominantSide = dominantMotionSide(motionL, motionR, triggerL, triggerR);
 
   // Update last motion time for timeout/clear logic
   if (triggerL || triggerR) {
-    lastMotionTime = millis();
+    lastMotionTime = now;
   }
 
   // Debug Print (only on significant motion changes)
   static int lastL = 0, lastR = 0;
   if ((abs(motionL - lastL) > 200 || abs(motionR - lastR) > 200)) {
-    Serial.printf("📊 L:%d R:%d S:%d\n", motionL, motionR, currentState);
+    Serial.printf("Motion L:%d R:%d S:%d B:%d D:%d\n",
+                  motionL,
+                  motionR,
+                  currentState,
+                  blockedStartSide,
+                  dominantSide);
     lastL = motionL; lastR = motionR;
   }
 
-  // WAIT_CLEAR runs outside cooldown so back-to-back people aren't missed
-  if (currentState == 3) {
-    bool zonesQuiet = (motionL < CLEAR_THRESHOLD_L && motionR < CLEAR_THRESHOLD_R);
-    if (zonesQuiet) {
-      if (clearStartTime == 0) clearStartTime = millis();
-      if (millis() - clearStartTime >= CLEAR_HOLD_MS) {
-        currentState = 0;
-        clearStartTime = 0;
-        Serial.println("✅ Zone Cleared, Ready");
-      }
-    } else {
+  // Clear only removes post-count blocking. Tracking itself times out so a
+  // person passing through the center dead zone does not lose their sequence.
+  bool zonesQuiet = (motionL < CLEAR_THRESHOLD_L && motionR < CLEAR_THRESHOLD_R);
+  if (currentState == 0 && blockedStartSide != 0 && zonesQuiet) {
+    if (clearStartTime == 0) clearStartTime = now;
+    if (now - clearStartTime >= CLEAR_HOLD_MS) {
+      blockedStartSide = 0;
       clearStartTime = 0;
+      Serial.println("Zones quiet, detector fully re-armed");
     }
+  } else if (!zonesQuiet) {
+    clearStartTime = 0;
   }
 
-  // Robust State Machine (cooldown only guards counting, not clearing)
-  if (true) {
-    if (currentState == 0) { // CLEAR
-      if (triggerL && !triggerR) {
-        currentState = 1; // ENTERED_L
-        Serial.println("➡️ Trigger Left");
-      } else if (triggerR && !triggerL) {
-        currentState = 2; // ENTERED_R
-        Serial.println("⬅️ Trigger Right");
-      }
+  // Re-armable state machine. It counts on a left-dominant -> right-dominant
+  // or right-dominant -> left-dominant crossing, so people can follow each
+  // other without waiting for the whole doorway to become empty.
+  if (currentState == 0) {
+    if (canStartFromSide(dominantSide, motionL, motionR, now)) {
+      currentState = dominantSide;
+      blockedStartSide = 0;
+      clearStartTime = 0;
+      lastMotionTime = now;
+      trackStartTime = now;
+      Serial.printf("Track start: %s\n", currentState == 1 ? "left" : "right");
     }
-    else if (currentState == 1) { // ENTERED_L
-      if (triggerR && millis() - lastCountTime > COOLDOWN) {
-        // Event: L -> R
-        if (IS_RIGHT_TO_LEFT_ENTER) {
-          if (passengerCount > 0) passengerCount--;
-          Serial.printf("🔴 EXIT Detected! Total: %d\n", passengerCount);
-          sendMQTT("exit");
-        } else {
-          if (passengerCount < MAX_PASSENGER_COUNT) passengerCount++;
-          Serial.printf("🟢 ENTER Detected! Total: %d\n", passengerCount);
-          sendMQTT("enter");
-        }
-        savePassengerCount();
-        publishStatus();
-        lastCountTime = millis();
-        currentState = 3; // WAIT_CLEAR
-      } else if (millis() - lastMotionTime > 2000) {
-        currentState = 0;
-        Serial.println("⏱️ State Reset Left (Timeout)");
-      }
+  } else if (currentState == 1) {
+    if (crossedToSide(2, motionL, motionR, triggerL, triggerR) &&
+        now - trackStartTime >= MIN_CROSSING_MS &&
+        now - lastCountTime > COOLDOWN) {
+      recordPassengerCrossing(true);
+      currentState = 0;
+    } else if (now - lastMotionTime > TRACK_TIMEOUT_MS) {
+      currentState = 0;
+      trackStartTime = 0;
+      Serial.println("Track reset: left timeout");
     }
-    else if (currentState == 2) { // ENTERED_R
-      if (triggerL && millis() - lastCountTime > COOLDOWN) {
-        // Event: R -> L
-        if (IS_RIGHT_TO_LEFT_ENTER) {
-          if (passengerCount < MAX_PASSENGER_COUNT) passengerCount++;
-          Serial.printf("🟢 ENTER Detected! Total: %d\n", passengerCount);
-          sendMQTT("enter");
-        } else {
-          if (passengerCount > 0) passengerCount--;
-          Serial.printf("🔴 EXIT Detected! Total: %d\n", passengerCount);
-          sendMQTT("exit");
-        }
-        savePassengerCount();
-        publishStatus();
-        lastCountTime = millis();
-        currentState = 3; // WAIT_CLEAR
-      } else if (millis() - lastMotionTime > 2000) {
-        currentState = 0;
-        Serial.println("⏱️ State Reset Right (Timeout)");
-      }
+  } else if (currentState == 2) {
+    if (crossedToSide(1, motionL, motionR, triggerL, triggerR) &&
+        now - trackStartTime >= MIN_CROSSING_MS &&
+        now - lastCountTime > COOLDOWN) {
+      recordPassengerCrossing(false);
+      currentState = 0;
+    } else if (now - lastMotionTime > TRACK_TIMEOUT_MS) {
+      currentState = 0;
+      trackStartTime = 0;
+      Serial.println("Track reset: right timeout");
     }
   }
 

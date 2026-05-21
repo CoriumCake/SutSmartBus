@@ -17,6 +17,7 @@ import '../models/bus.dart';
 import '../models/route_model.dart';
 import '../models/waypoint.dart';
 import '../utils/map_utils.dart';
+import '../utils/no_gps_bus_location.dart';
 import '../utils/route_helpers.dart';
 
 class IncomingBus {
@@ -391,6 +392,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return (dLat * dLat) + (dLon * dLon);
   }
 
+  bool _isNoGpsAssignedBus(Bus bus) {
+    final developerSettings = ref.read(developerSettingsProvider);
+    return isNoGpsAssignedBus(
+      bus,
+      noGpsModeEnabled: developerSettings.noGpsModeEnabled,
+      assignedBusMac: developerSettings.assignedBusMac,
+    );
+  }
+
   _BusHeadingTransform _headingFromPoints(LatLng from, LatLng to) {
     final dx = to.longitude - from.longitude;
     final dy = -(to.latitude - from.latitude);
@@ -437,6 +447,30 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       final lat = bus.currentLat;
       final lon = bus.currentLon;
       if (lat == null || lon == null) {
+        continue;
+      }
+
+      final rawPoint = LatLng(lat, lon);
+      if (_isNoGpsAssignedBus(bus)) {
+        final now = DateTime.now();
+        final lastRaw = _lastRawBusPositions[bus.busMac];
+        final hasRawChange = lastRaw == null ||
+            lastRaw.latitude != rawPoint.latitude ||
+            lastRaw.longitude != rawPoint.longitude;
+        if (hasRawChange) {
+          final previousUpdatedAt = _lastRawBusUpdatedAt[bus.busMac];
+          if (lastRaw != null && previousUpdatedAt != null) {
+            _previousRawBusPositions[bus.busMac] = lastRaw;
+            _previousRawBusUpdatedAt[bus.busMac] = previousUpdatedAt;
+          }
+          _lastRawBusPositions[bus.busMac] = rawPoint;
+          _lastRawBusUpdatedAt[bus.busMac] = now;
+        }
+        _renderedBusPositions[bus.busMac] = rawPoint;
+        _busAnimationStart[bus.busMac] = rawPoint;
+        _busAnimationTarget[bus.busMac] = rawPoint;
+        _busAnimationStartedAt[bus.busMac] = now;
+        _busAnimationTravelDurations[bus.busMac] = _busAnimationMinDuration;
         continue;
       }
 
@@ -786,6 +820,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       return null;
     }
 
+    if (_isNoGpsAssignedBus(bus)) {
+      return LatLng(lat, lon);
+    }
+
     final route = _resolveRouteForBus(bus, routes);
     if (route == null || route.waypoints.length < 2) {
       return LatLng(lat, lon);
@@ -795,6 +833,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   LatLng? _smoothedPointForBus(Bus bus, List<BusRoute> routes) {
+    final lat = bus.currentLat;
+    final lon = bus.currentLon;
+    if (lat == null || lon == null) {
+      return null;
+    }
+
+    if (_isNoGpsAssignedBus(bus)) {
+      return LatLng(lat, lon);
+    }
+
     final snappedPoint = _snappedPointForBus(bus, routes);
     if (snappedPoint == null) {
       return null;
@@ -3233,8 +3281,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final debugMode = ref.watch(debugProvider).debugMode;
     final isDark = ref.watch(themeProvider).isDark;
     final testMode = ref.watch(testModeProvider);
-    _syncAnimatedBusPositions(buses, routes);
-    final renderedBuses = buses.map(_renderedBus).toList();
+    final noGpsUserLocation = _userLocation == null
+        ? null
+        : LatLng(_userLocation!.latitude, _userLocation!.longitude);
+    final positionedBuses = applyNoGpsAssignedBusLocation(
+      buses: buses,
+      noGpsModeEnabled: developerSettings.noGpsModeEnabled,
+      assignedBusMac: developerSettings.assignedBusMac,
+      userLocation: noGpsUserLocation,
+    );
+    _syncAnimatedBusPositions(positionedBuses, routes);
+    final renderedBuses = positionedBuses.map(_renderedBus).toList();
     final visibleRenderedBuses =
         renderedBuses.where((bus) => debugMode || !bus.isDebugBus).toList();
     final displayedBuses = _ridingBusMac == null
