@@ -15,6 +15,7 @@ const int _totalBusCapacity = 40;
 const double _defaultBusParkingLat = 14.878001729445229;
 const double _defaultBusParkingLon = 102.02142930035654;
 const double _parkingResetRadiusMeters = 35;
+const int _authoritativePassengerCountFreshMs = 120000;
 
 double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
   const earthRadiusMeters = 6371000.0;
@@ -94,6 +95,7 @@ class DataNotifier extends StateNotifier<DataState> {
   Timer? _presenceTimer;
   Map<String, String> _busRouteMappings = {};
   final Map<String, Map<String, bool>> _componentOnlineByBus = {};
+  final Map<String, int> _lastAuthoritativePassengerCountAt = {};
 
   DataNotifier(this._api, this._mqtt) : super(DataState()) {
     _initialize();
@@ -338,6 +340,62 @@ class DataNotifier extends StateNotifier<DataState> {
     return !componentStates.values.any((status) => status == false);
   }
 
+  bool _isAuthoritativePassengerPayload(Map<String, dynamic> data) {
+    final source =
+        (data['count_source'] ?? data['source'] ?? '').toString().toLowerCase();
+    return source == 'door' || data['dir'] != null;
+  }
+
+  void _markAuthoritativePassengerCount({
+    Bus? bus,
+    String? busId,
+    String? busMac,
+    String? busName,
+  }) {
+    final key = _presenceKeyForBus(
+      bus: bus,
+      busId: busId,
+      busMac: busMac,
+      busName: busName,
+    );
+    if (key == null) return;
+    _lastAuthoritativePassengerCountAt[key] =
+        DateTime.now().millisecondsSinceEpoch;
+  }
+
+  bool _shouldIgnoreNonAuthoritativeZero({
+    required int? incomingCount,
+    required Bus? existingBus,
+    required bool hasPayloadLocation,
+    required bool isAuthoritative,
+    String? busId,
+    String? busMac,
+    String? busName,
+  }) {
+    if (incomingCount != 0 ||
+        existingBus?.personCount == null ||
+        existingBus!.personCount! <= 0 ||
+        hasPayloadLocation ||
+        isAuthoritative) {
+      return false;
+    }
+
+    final key = _presenceKeyForBus(
+      bus: existingBus,
+      busId: busId,
+      busMac: busMac,
+      busName: busName,
+    );
+    final lastAuthoritativeAt =
+        key == null ? null : _lastAuthoritativePassengerCountAt[key];
+    if (lastAuthoritativeAt == null) {
+      return true;
+    }
+
+    return DateTime.now().millisecondsSinceEpoch - lastAuthoritativeAt <=
+        _authoritativePassengerCountFreshMs;
+  }
+
   /// Smart merge: preserves MQTT real-time data, handles name protection
   List<Bus> _mergeBuses(List<Bus> existing, List<Bus> incoming) {
     final merged = [...existing];
@@ -370,6 +428,15 @@ class DataNotifier extends StateNotifier<DataState> {
             busName: finalName,
           ));
         } else {
+          final preserveLocalPassengerCount = _shouldIgnoreNonAuthoritativeZero(
+            incomingCount: apiBus.personCount,
+            existingBus: local,
+            hasPayloadLocation: false,
+            isAuthoritative: false,
+            busId: apiBus.busId,
+            busMac: apiBus.busMac,
+            busName: apiBus.busName,
+          );
           merged[idx] = _applyRouteMapping(apiBus.copyWith(
             busName: finalName,
             rssi: apiBus.rssi ?? local.rssi,
@@ -380,6 +447,12 @@ class DataNotifier extends StateNotifier<DataState> {
             pm10: apiBus.pm10 ?? local.pm10,
             temp: apiBus.temp ?? local.temp,
             hum: apiBus.hum ?? local.hum,
+            personCount: preserveLocalPassengerCount
+                ? local.personCount
+                : apiBus.personCount,
+            seatsAvailable: preserveLocalPassengerCount
+                ? local.seatsAvailable
+                : apiBus.seatsAvailable,
           ));
         }
       } else if (merged.length < 50) {
@@ -441,6 +514,7 @@ class DataNotifier extends StateNotifier<DataState> {
             (_totalBusCapacity - normalizedCount).clamp(0, _totalBusCapacity),
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       ));
+      _markAuthoritativePassengerCount(bus: buses[idx]);
     } else if (buses.length < 50) {
       final normalizedCount = _normalizePassengerCount(
         count,
@@ -449,7 +523,7 @@ class DataNotifier extends StateNotifier<DataState> {
         resetAtParking: hasPayloadLocation,
       );
       final effectiveBusId = !_isInvalidBusId(busId) ? busId!.trim() : busMac;
-      buses.add(_applyRouteMapping(Bus(
+      final nextBus = _applyRouteMapping(Bus(
         id: effectiveBusId,
         busId: !_isInvalidBusId(busId) ? busId!.trim() : null,
         busMac: busMac,
@@ -462,7 +536,9 @@ class DataNotifier extends StateNotifier<DataState> {
         seatsAvailable:
             (_totalBusCapacity - normalizedCount).clamp(0, _totalBusCapacity),
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
-      )));
+      ));
+      buses.add(nextBus);
+      _markAuthoritativePassengerCount(bus: nextBus);
     }
     state = state.copyWith(buses: buses);
   }
@@ -498,6 +574,8 @@ class DataNotifier extends StateNotifier<DataState> {
     final payloadLat = (data['lat'] as num?)?.toDouble();
     final payloadLon = (data['lon'] as num?)?.toDouble();
     final hasPayloadLocation = payloadLat != null && payloadLon != null;
+    final isAuthoritativePassengerPayload =
+        _isAuthoritativePassengerPayload(data);
 
     final buses = [...state.buses];
     final idx = _findBusIndexByIdentity(
@@ -512,7 +590,16 @@ class DataNotifier extends StateNotifier<DataState> {
       final nextLon = payloadLon ?? buses[idx].currentLon;
       final rawPersonCount =
           data['person_count'] as int? ?? buses[idx].personCount;
-      final normalizedPersonCount = rawPersonCount == null
+      final ignoreZero = _shouldIgnoreNonAuthoritativeZero(
+        incomingCount: rawPersonCount,
+        existingBus: buses[idx],
+        hasPayloadLocation: hasPayloadLocation,
+        isAuthoritative: isAuthoritativePassengerPayload,
+        busId: busId,
+        busMac: busMac,
+        busName: busName,
+      );
+      final normalizedPersonCount = rawPersonCount == null || ignoreZero
           ? null
           : _normalizePassengerCount(rawPersonCount,
               lat: payloadLat,
@@ -536,6 +623,9 @@ class DataNotifier extends StateNotifier<DataState> {
         personCount: normalizedPersonCount ?? buses[idx].personCount,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       ));
+      if (normalizedPersonCount != null && isAuthoritativePassengerPayload) {
+        _markAuthoritativePassengerCount(bus: buses[idx]);
+      }
     } else if (buses.length < 50) {
       final effectiveBusMac = _isInvalidHardwareBusMac(busMac)
           ? (busName ?? busId ?? 'ESP32-CAM-01')
@@ -551,7 +641,7 @@ class DataNotifier extends StateNotifier<DataState> {
               lon: payloadLon,
               resetAtParking: hasPayloadLocation,
             );
-      buses.add(_applyRouteMapping(Bus(
+      final nextBus = _applyRouteMapping(Bus(
         id: effectiveBusId ?? effectiveBusMac,
         busId: effectiveBusId,
         busMac: effectiveBusMac,
@@ -571,7 +661,11 @@ class DataNotifier extends StateNotifier<DataState> {
                 .clamp(0, _totalBusCapacity)
             : data['seats_available'] as int?,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
-      )));
+      ));
+      buses.add(nextBus);
+      if (normalizedPersonCount != null && isAuthoritativePassengerPayload) {
+        _markAuthoritativePassengerCount(bus: nextBus);
+      }
     }
     state = state.copyWith(buses: buses);
   }
@@ -659,9 +753,20 @@ class DataNotifier extends StateNotifier<DataState> {
     final payloadLat = (data['lat'] as num?)?.toDouble();
     final payloadLon = (data['lon'] as num?)?.toDouble();
     final hasPayloadLocation = payloadLat != null && payloadLon != null;
+    final isAuthoritativePassengerPayload =
+        _isAuthoritativePassengerPayload(data);
 
     if (idx >= 0) {
-      final normalizedPersonCount = rawPersonCount == null
+      final ignoreZero = _shouldIgnoreNonAuthoritativeZero(
+        incomingCount: rawPersonCount,
+        existingBus: buses[idx],
+        hasPayloadLocation: hasPayloadLocation,
+        isAuthoritative: isAuthoritativePassengerPayload,
+        busId: payloadBusId,
+        busMac: statusBusMac ?? topicIdentity,
+        busName: statusBusName,
+      );
+      final normalizedPersonCount = rawPersonCount == null || ignoreZero
           ? null
           : _normalizePassengerCount(
               rawPersonCount,
@@ -686,6 +791,9 @@ class DataNotifier extends StateNotifier<DataState> {
         personCount: normalizedPersonCount ?? buses[idx].personCount,
         seatsAvailable: seatsAvailable ?? buses[idx].seatsAvailable,
       ));
+      if (normalizedPersonCount != null && isAuthoritativePassengerPayload) {
+        _markAuthoritativePassengerCount(bus: buses[idx]);
+      }
     } else if (buses.length < 50) {
       final normalizedPersonCount = rawPersonCount == null
           ? null
@@ -701,7 +809,7 @@ class DataNotifier extends StateNotifier<DataState> {
           : null;
       final effectiveBusId =
           !_isInvalidBusId(payloadBusId) ? payloadBusId!.trim() : null;
-      buses.add(_applyRouteMapping(Bus(
+      final nextBus = _applyRouteMapping(Bus(
         id: effectiveBusId ?? topicIdentity,
         busId: effectiveBusId,
         busMac: statusBusMac ?? topicIdentity,
@@ -714,7 +822,11 @@ class DataNotifier extends StateNotifier<DataState> {
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
         personCount: normalizedPersonCount,
         seatsAvailable: seatsAvailable,
-      )));
+      ));
+      buses.add(nextBus);
+      if (normalizedPersonCount != null && isAuthoritativePassengerPayload) {
+        _markAuthoritativePassengerCount(bus: nextBus);
+      }
     }
     state = state.copyWith(buses: buses);
   }

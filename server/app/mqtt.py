@@ -24,6 +24,10 @@ def _optional_float(payload: dict, key: str) -> float | None:
     return float(payload[key])
 
 
+def _is_status_topic(topic: str) -> bool:
+    return topic.startswith("sut/bus/") and topic.endswith("/status")
+
+
 def bus_document_to_app_payload(bus_doc: dict) -> dict:
     """Normalize a Mongo bus document to the app's MQTT payload shape."""
     if not bus_doc:
@@ -42,6 +46,7 @@ def bus_document_to_app_payload(bus_doc: dict) -> dict:
         "seats_available": bus_doc.get("seats_available", 0),
         "person_count": bus_doc.get("person_count", 0),
         "rssi": bus_doc.get("rssi"),
+        "count_source": bus_doc.get("count_source"),
     }
 
 
@@ -252,6 +257,7 @@ def on_message(client, userdata, msg):
                              if not has_payload_location:
                                  app_payload["lat"] = None
                                  app_payload["lon"] = None
+                             app_payload["count_source"] = "door"
                              print(f"📡 Broadcasting to app: passengers={current_passengers}, seats={seats_available}")
                              client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
                     
@@ -288,6 +294,7 @@ def on_message(client, userdata, msg):
         lat = payload.get("lat")
         lon = payload.get("lon")
         has_payload_location = lat is not None and lon is not None
+        is_status_message = _is_status_topic(msg.topic)
         pm2_5 = _optional_float(payload, "pm2_5")
         pm10 = _optional_float(payload, "pm10")
         temp = _optional_float(payload, "temp")
@@ -325,10 +332,14 @@ def on_message(client, userdata, msg):
                 if has_payload_location
                 else clamp_passenger_count(person_count)
             )
+            if is_status_message and not has_payload_location and person_count == 0:
+                person_count = None
+                seats_available = None
             if "seats_available" not in payload or (
                 has_payload_location and is_at_default_parking(lat, lon)
             ):
-                seats_available = seats_available_for_count(person_count)
+                if person_count is not None:
+                    seats_available = seats_available_for_count(person_count)
         elif has_payload_location and is_at_default_parking(lat, lon):
             person_count = 0
             seats_available = seats_available_for_count(0)
@@ -356,7 +367,7 @@ def on_message(client, userdata, msg):
                     person_count=person_count,
                     rssi=rssi,
                     apply_parking_reset=has_payload_location,
-                    use_default_location_if_missing=person_count is None,
+                    use_default_location_if_missing=person_count is None and not is_status_message,
                 )
                 previous_at_parking = (
                     is_at_default_parking(
@@ -436,6 +447,7 @@ def on_message(client, userdata, msg):
                     "seats_available": seats_available,
                     "person_count": person_count,
                     "rssi": rssi,
+                    "count_source": "status" if is_status_message else "telemetry",
                 }
                 logger.debug(
                     "Publishing app payload bus=%s pm2_5=%s pm10=%s temp=%s hum=%s lat=%s lon=%s",
