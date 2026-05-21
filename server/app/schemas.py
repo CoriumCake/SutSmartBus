@@ -206,3 +206,9 @@ class DeveloperSettingsUpdateRequest(BaseModel):
     reset_passenger_count_at_terminal_stop: Optional[bool] = None
     no_gps_mode_enabled: Optional[bool] = None
     assigned_bus_mac: Optional[str] = None
+
+
+class AssignedBusLocationSyncRequest(BaseModel):
+    bus_mac: str
+    lat: float
+    lon: float
