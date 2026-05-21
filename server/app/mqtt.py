@@ -693,12 +693,48 @@ def on_message(client, userdata, msg):
                         bus_mac=resolved_mac,
                         bus_id=resolved_bus_id or bus_id,
                     )
-                # Create history entry
+                effective_pm2_5 = (
+                    pm2_5
+                    if pm2_5 is not None
+                    else (updated_bus or {}).get("pm2_5")
+                )
+                effective_pm10 = (
+                    pm10
+                    if pm10 is not None
+                    else (updated_bus or {}).get("pm10")
+                )
+                effective_temp = (
+                    temp
+                    if temp is not None
+                    else (updated_bus or {}).get("temp")
+                )
+                effective_hum = (
+                    hum
+                    if hum is not None
+                    else (updated_bus or {}).get("hum")
+                )
+                effective_rssi = (
+                    rssi
+                    if rssi is not None
+                    else (updated_bus or {}).get("rssi")
+                )
+
+                effective_pm2_5 = float(effective_pm2_5 or 0.0)
+                effective_pm10 = float(effective_pm10 or 0.0)
+                effective_temp = float(effective_temp or 0.0)
+                effective_hum = float(effective_hum or 0.0)
+
+                # Create history entry. GPS-only updates reuse the latest
+                # stored sensor values so the heatmap can grow as the bus moves.
                 if lat is not None and lon is not None:
                     hw_loc = models.HardwareLocation(
-                        lat=lat, lon=lon, pm2_5=pm2_5 or 0.0, pm10=pm10 or 0.0, 
-                        rssi=rssi,
-                        timestamp=datetime.now(timezone.utc), bus_mac=resolved_mac
+                        lat=lat,
+                        lon=lon,
+                        pm2_5=effective_pm2_5,
+                        pm10=effective_pm10,
+                        rssi=effective_rssi,
+                        timestamp=datetime.now(timezone.utc),
+                        bus_mac=resolved_mac,
                     )
                     await crud.create_hardware_location(hw_loc)
                 
@@ -708,10 +744,10 @@ def on_message(client, userdata, msg):
                         resolved_mac,
                         lat,
                         lon,
-                        pm2_5 or 0.0,
-                        pm10 or 0.0,
-                        temp or 0.0,
-                        hum or 0.0,
+                        effective_pm2_5,
+                        effective_pm10,
+                        effective_temp,
+                        effective_hum,
                     )
 
                 if updated_bus and msg.topic != constants.TOPIC_ESP32_GPS_FAST:
