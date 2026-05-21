@@ -185,13 +185,13 @@ class BusService {
     required double lon,
   }) async {
     try {
-      final response = await _dio.put(
-        '/api/buses/$busMac',
+      final response = await _dio.post(
+        '/api/developer-settings/sync-assigned-bus-location',
         data: {
-          'current_lat': lat,
-          'current_lon': lon,
+          'bus_mac': busMac,
+          'lat': lat,
+          'lon': lon,
         },
-        options: Options(headers: ApiConfig.headers),
       );
       if (response.statusCode != 200) {
         throw Exception('Failed to update bus location');

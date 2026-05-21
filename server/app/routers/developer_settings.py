@@ -21,3 +21,20 @@ async def update_developer_settings(
         no_gps_mode_enabled=request.no_gps_mode_enabled,
         assigned_bus_mac=request.assigned_bus_mac,
     )
+
+
+@router.post("/sync-assigned-bus-location")
+async def sync_assigned_bus_location(
+    request: schemas.AssignedBusLocationSyncRequest,
+):
+    updated_bus = await crud.update_bus_location(
+        mac_address=request.bus_mac,
+        lat=request.lat,
+        lon=request.lon,
+        seats_available=None,
+        use_default_location_if_missing=False,
+    )
+    return {
+        "success": updated_bus is not None,
+        "bus": updated_bus,
+    }

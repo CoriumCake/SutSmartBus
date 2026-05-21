@@ -37,6 +37,7 @@ PUBLIC_GET_PATHS = {
     "/api/bus-route-mapping",
     "/api/passengers/latest",
     "/api/pm_zones",
+    "/api/developer-settings",
 }
 
 PUBLIC_GET_PREFIXES = (
@@ -53,6 +54,8 @@ PUBLIC_METHOD_PATHS = {
     ("POST", "/api/rides/end"),
     ("POST", "/api/rides/status"),
     ("POST", "/api/ring"),
+    ("PUT", "/api/developer-settings"),
+    ("POST", "/api/developer-settings/sync-assigned-bus-location"),
 }
 
 
