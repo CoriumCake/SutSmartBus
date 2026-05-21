@@ -118,7 +118,7 @@ async def update_bus_location(
     mac_address: str,
     lat: float | None,
     lon: float | None,
-    seats_available: int,
+    seats_available: int | None,
     bus_id: str | None = None,
     pm2_5: float | None = None,
     pm10: float | None = None,
@@ -199,7 +199,8 @@ async def update_bus_location(
             update_data["person_count"] = 0
             update_data["seats_available"] = seats_available_for_count(0)
         else:
-            update_data["seats_available"] = max(0, seats_available)
+            if seats_available is not None:
+                update_data["seats_available"] = max(0, seats_available)
             if existing_bus and current_count is not None:
                 update_data.setdefault("person_count", current_count)
 

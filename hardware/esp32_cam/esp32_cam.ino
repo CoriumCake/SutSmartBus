@@ -72,8 +72,8 @@ unsigned long lastMqttAttempt = 0, lastMqttStop = 0;
 unsigned long lastWifiRetry = 0, mqttDisconnectedSince = 0;
 uint8_t wifiNetworkIndex = 0;
 char mqttStatusTopic[96];
-char mqttStatusOnlinePayload[224];
-char mqttStatusOfflinePayload[224];
+char mqttStatusOnlinePayload[256];
+char mqttStatusOfflinePayload[256];
 char mqttRingTopic[96];
 unsigned long lastAcceptedRingTimestamp = 0;
 
@@ -194,11 +194,11 @@ void savePassengerCount() {
 // MQTT Functions
 void sendMQTT(String dir) {
   if (!mqttClient.connected()) return;
-  char buf[192];
+  char buf[224];
   snprintf(
     buf,
     sizeof(buf),
-    "{\"bus_id\":\"%s\",\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"dir\":\"%s\",\"count\":%d,\"t\":%ld}",
+    "{\"bus_id\":\"%s\",\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"dir\":\"%s\",\"count\":%d,\"count_source\":\"door\",\"t\":%ld}",
     BUS_ID_ALIAS,
     reported_bus_mac,
     BUS_NAME_ALIAS,
@@ -213,7 +213,7 @@ void buildStatusPayload(bool isOnline, char* buffer, size_t bufferSize) {
   snprintf(
     buffer,
     bufferSize,
-    "{\"bus_id\":\"%s\",\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"component\":\"esp32_cam\",\"is_online\":%s,\"rssi\":%ld,\"uptime\":%lu,\"count\":%d,\"person_count\":%d}",
+    "{\"bus_id\":\"%s\",\"bus_mac\":\"%s\",\"bus_name\":\"%s\",\"component\":\"esp32_cam\",\"is_online\":%s,\"rssi\":%ld,\"uptime\":%lu,\"count\":%d,\"person_count\":%d,\"count_source\":\"status\"}",
     BUS_ID_ALIAS,
     reported_bus_mac,
     BUS_NAME_ALIAS,
