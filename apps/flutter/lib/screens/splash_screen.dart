@@ -97,10 +97,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             children: [
               SlideTransition(
                 position: _bounceAnimation,
-                child: Image.asset(
-                  'assets/images/bus_icon.png', // Using the new logo
-                  width: 200,
-                  height: 200,
+                child: Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()..scale(-1.0, 1.0),
+                  child: Image.asset(
+                    'assets/images/bus_icon.png',
+                    width: 220,
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
             ],
