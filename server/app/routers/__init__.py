@@ -8,3 +8,4 @@ from . import system
 from . import admin
 from . import dashboard
 from . import feedback
+from . import developer_settings

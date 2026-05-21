@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # Default fallback bus location used when a device comes online without GPS data yet.
     DEFAULT_BUS_LAT: float = 14.878001729445229
     DEFAULT_BUS_LON: float = 102.02142930035654
+    RESET_PASSENGER_COUNT_AT_TERMINAL_STOP: bool = True
 
     class Config:
         env_file = ".env"

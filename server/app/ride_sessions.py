@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app import crud
-from app.passenger_rules import normalize_passenger_count
+from app.passenger_rules import clamp_passenger_count
 from core.config import settings
 
 # Keep ride start validation aligned with the Flutter boarding gate in
@@ -173,11 +173,7 @@ def _latest_passenger_count(
         except (TypeError, ValueError):
             return None
 
-    return normalize_passenger_count(
-        row["count"],
-        row["lat"] if "lat" in row.keys() else None,
-        row["lon"] if "lon" in row.keys() else None,
-    )
+    return clamp_passenger_count(row["count"])
 
 
 def _recent_passenger_history_count(bus: dict, requested_bus_mac: str) -> Optional[int]:

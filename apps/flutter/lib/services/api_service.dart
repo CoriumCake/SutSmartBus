@@ -383,4 +383,47 @@ class ApiService {
       return false;
     }
   }
+
+  Future<Map<String, dynamic>?> fetchDeveloperSettings() async {
+    try {
+      final response = await _dio.get('/api/developer-settings');
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[ApiService] Error fetching developer settings: $e');
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> updateDeveloperSettings({
+    required bool resetPassengerCountAtTerminalStop,
+    bool? noGpsModeEnabled,
+    String? assignedBusMac,
+  }) async {
+    try {
+      final data = <String, dynamic>{
+        'reset_passenger_count_at_terminal_stop':
+            resetPassengerCountAtTerminalStop,
+      };
+      if (noGpsModeEnabled != null) {
+        data['no_gps_mode_enabled'] = noGpsModeEnabled;
+      }
+      if (assignedBusMac != null) {
+        data['assigned_bus_mac'] = assignedBusMac;
+      }
+      final response = await _dio.put(
+        '/api/developer-settings',
+        data: data,
+      );
+      if (response.data is Map<String, dynamic>) {
+        return response.data as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[ApiService] Error updating developer settings: $e');
+      rethrow;
+    }
+  }
 }

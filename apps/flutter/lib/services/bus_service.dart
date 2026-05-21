@@ -178,4 +178,30 @@ class BusService {
       return false;
     }
   }
+
+  Future<void> updateDeveloperBusLocation({
+    required String busMac,
+    required double lat,
+    required double lon,
+  }) async {
+    try {
+      final response = await _dio.put(
+        '/api/buses/$busMac',
+        data: {
+          'current_lat': lat,
+          'current_lon': lon,
+        },
+        options: Options(headers: ApiConfig.headers),
+      );
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update bus location');
+      }
+    } on DioException catch (e) {
+      throw Exception(
+        e.response?.data['detail'] ??
+            e.message ??
+            'Failed to update developer bus location',
+      );
+    }
+  }
 }

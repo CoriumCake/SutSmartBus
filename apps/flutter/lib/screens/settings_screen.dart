@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../providers/language_provider.dart';
 import '../providers/notification_provider.dart';
 import '../providers/theme_provider.dart';
@@ -26,6 +27,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 20),
+          _sectionHeader(theme, 'General'),
           _sectionCard(
             theme,
             icon: Icons.palette,
@@ -67,15 +69,18 @@ class SettingsScreen extends ConsumerWidget {
             ),
             onTap: () => _showLanguageDialog(context, ref),
           ),
+          const SizedBox(height: 20),
+          _sectionHeader(theme, 'Developer'),
           _sectionCard(
             theme,
-            icon: Icons.wifi_tethering,
-            title: 'SUT-IoT WiFi Heatmap',
-            subtitle: 'Test route coverage from bus RSSI readings',
+            icon: Icons.code,
+            title: 'Developer',
+            subtitle: 'Debug tools and operational toggles',
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/wifi-heatmap'),
+            onTap: () => context.push('/developer-settings'),
           ),
           const SizedBox(height: 20),
+          _sectionHeader(theme, 'Support'),
           _sectionCard(
             theme,
             icon: Icons.info_outline,
@@ -105,6 +110,19 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push('/feedback'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(ThemeData theme, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: theme.textTheme.titleSmall?.copyWith(
+          color: theme.colorScheme.primary,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
