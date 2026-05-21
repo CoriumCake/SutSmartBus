@@ -6,6 +6,7 @@ from app import analytics as analytics_module, constants, crud, schemas, state
 from app.mqtt import (
     bus_document_to_app_payload,
     client as mqtt_client,
+    mark_passenger_count_reset_pending,
     publish_reset_count_command,
 )
 from app.passenger_rules import seats_available_for_count
@@ -87,9 +88,16 @@ async def reset_passenger_count(
     with state.state.passenger_lock:
         state.state.current_passengers = 0
 
-    publish_reset_count_command(
+    mark_passenger_count_reset_pending(
+        updated_bus.get("mac_address"),
+        updated_bus.get("bus_id"),
+        bus_mac,
+        updated_bus.get("bus_name"),
+    )
+    reset_command = publish_reset_count_command(
         bus_mac=updated_bus.get("mac_address"),
         bus_id=updated_bus.get("bus_id"),
+        force=True,
     )
     mqtt_client.publish(
         constants.TOPIC_APP_LOCATION,
@@ -99,4 +107,6 @@ async def reset_passenger_count(
     return {
         "success": True,
         "bus": updated_bus,
+        "reset_command_sent": reset_command["sent"],
+        "reset_command": reset_command,
     }

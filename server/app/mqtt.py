@@ -18,7 +18,9 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 RESET_COUNT_COMMAND_COOLDOWN_SECONDS = 60
+RESET_COUNT_PENDING_SECONDS = 30
 _last_reset_count_command_at: dict[str, int] = {}
+_pending_reset_until_by_bus: dict[str, float] = {}
 
 
 def _optional_float(payload: dict, key: str) -> float | None:
@@ -33,6 +35,48 @@ def _is_status_topic(topic: str) -> bool:
 
 def _ring_secret() -> str:
     return settings.RING_COMMAND_SECRET or settings.API_SECRET_KEY
+
+
+def _normalized_identity(value: str | None) -> str | None:
+    normalized = (value or "").strip()
+    return normalized if normalized else None
+
+
+def _active_reset_identities(*identities: str | None) -> list[str]:
+    now = time.time()
+    expired = [
+        identity
+        for identity, expires_at in _pending_reset_until_by_bus.items()
+        if expires_at <= now
+    ]
+    for identity in expired:
+        _pending_reset_until_by_bus.pop(identity, None)
+
+    active = []
+    for identity in identities:
+        normalized = _normalized_identity(identity)
+        if normalized and _pending_reset_until_by_bus.get(normalized, 0) > now:
+            active.append(normalized)
+    return active
+
+
+def mark_passenger_count_reset_pending(*identities: str | None):
+    expires_at = time.time() + RESET_COUNT_PENDING_SECONDS
+    for identity in identities:
+        normalized = _normalized_identity(identity)
+        if normalized:
+            _pending_reset_until_by_bus[normalized] = expires_at
+
+
+def clear_passenger_count_reset_pending(*identities: str | None):
+    for identity in identities:
+        normalized = _normalized_identity(identity)
+        if normalized:
+            _pending_reset_until_by_bus.pop(normalized, None)
+
+
+def is_passenger_count_reset_pending(*identities: str | None) -> bool:
+    return len(_active_reset_identities(*identities)) > 0
 
 
 def _coerce_location_override(
@@ -117,11 +161,22 @@ async def resolve_effective_bus_identity(
     return await resolve_bus_identity(bus_mac, bus_name, bus_id)
 
 
-def publish_reset_count_command(*, bus_mac: str | None, bus_id: str | None = None):
+def publish_reset_count_command(
+    *,
+    bus_mac: str | None,
+    bus_id: str | None = None,
+    force: bool = False,
+) -> dict:
     secret = _ring_secret()
+    result = {
+        "sent": False,
+        "reason": None,
+        "targets": [],
+    }
     if not secret:
         logger.warning("Skipping ESP32-CAM reset command because no command secret is configured")
-        return
+        result["reason"] = "missing_command_secret"
+        return result
 
     targets = []
     for target in (bus_mac, bus_id):
@@ -129,11 +184,29 @@ def publish_reset_count_command(*, bus_mac: str | None, bus_id: str | None = Non
         if normalized and normalized not in targets:
             targets.append(normalized)
 
-    timestamp = int(time.time())
+    if not targets:
+        result["reason"] = "missing_target"
+        return result
+
+    now = int(time.time())
     for target in targets:
         last_sent_at = _last_reset_count_command_at.get(target)
-        if last_sent_at is not None and timestamp - last_sent_at < RESET_COUNT_COMMAND_COOLDOWN_SECONDS:
+        if (
+            not force
+            and last_sent_at is not None
+            and now - last_sent_at < RESET_COUNT_COMMAND_COOLDOWN_SECONDS
+        ):
+            result["targets"].append({
+                "target": target,
+                "topic": constants.ring_topic_for_bus(target),
+                "sent": False,
+                "reason": "cooldown",
+            })
             continue
+
+        timestamp = now + 1
+        if last_sent_at is not None and timestamp <= last_sent_at:
+            timestamp = last_sent_at + 1
 
         payload = {
             "command": "reset_count",
@@ -146,9 +219,28 @@ def publish_reset_count_command(*, bus_mac: str | None, bus_id: str | None = Non
                 timestamp=timestamp,
             ),
         }
-        client.publish(constants.ring_topic_for_bus(target), json.dumps(payload), qos=1)
-        _last_reset_count_command_at[target] = timestamp
-        logger.info("Published ESP32-CAM passenger reset command target=%s", target)
+        topic = constants.ring_topic_for_bus(target)
+        publish_info = client.publish(topic, json.dumps(payload), qos=1)
+        rc = getattr(publish_info, "rc", None)
+        sent = rc == mqtt.MQTT_ERR_SUCCESS or rc == 0
+        result["targets"].append({
+            "target": target,
+            "topic": topic,
+            "sent": sent,
+            "rc": rc,
+        })
+        result["sent"] = result["sent"] or sent
+        if sent:
+            _last_reset_count_command_at[target] = timestamp
+        logger.info(
+            "Published ESP32-CAM passenger reset command target=%s topic=%s rc=%s",
+            target,
+            topic,
+            rc,
+        )
+    if not result["sent"] and result["reason"] is None:
+        result["reason"] = "publish_failed"
+    return result
 
 # Helper for Point in Polygon (Ray Casting)
 def is_point_in_polygon(lat: float, lon: float, polygon: list):
@@ -331,6 +423,28 @@ def on_message(client, userdata, msg):
                     if has_payload_location and should_reset_at_terminal_stop
                     else clamp_passenger_count(current_passengers)
                 )
+
+                reset_identities = [
+                    resolved_mac,
+                    bus_id,
+                    bus_mac,
+                    bus_name,
+                    resolved_bus.get("bus_id") if resolved_bus else None,
+                    resolved_bus.get("bus_name") if resolved_bus else None,
+                ]
+                if current_passengers == 0:
+                    clear_passenger_count_reset_pending(*reset_identities)
+                elif is_passenger_count_reset_pending(*reset_identities):
+                    logger.info(
+                        "Ignoring stale nonzero passenger count during developer reset bus=%s count=%s",
+                        resolved_mac,
+                        current_passengers,
+                    )
+                    publish_reset_count_command(
+                        bus_mac=resolved_mac,
+                        bus_id=bus_id or (resolved_bus.get("bus_id") if resolved_bus else None),
+                    )
+                    return
                 
                 # Store in SQLite history
                 from .analytics import record_passenger_count
@@ -469,6 +583,7 @@ def on_message(client, userdata, msg):
         person_count = payload.get("person_count")
         if person_count is None:
             person_count = payload.get("count")
+        status_reported_zero_count = False
         if person_count is not None:
             person_count = (
                 normalize_passenger_count(person_count, lat, lon)
@@ -476,6 +591,7 @@ def on_message(client, userdata, msg):
                 else clamp_passenger_count(person_count)
             )
             if is_status_message and not has_payload_location and person_count == 0:
+                status_reported_zero_count = True
                 person_count = None
                 seats_available = None
             if "seats_available" not in payload or (
@@ -507,6 +623,31 @@ def on_message(client, userdata, msg):
                     assigned_bus_mac=assigned_bus_mac,
                 )
                 previous_bus = resolved_bus
+                reset_identities = [
+                    resolved_mac,
+                    resolved_bus_id,
+                    bus_id,
+                    bus_mac,
+                    resolved_name,
+                    bus_name,
+                ]
+                if status_reported_zero_count or person_count == 0:
+                    clear_passenger_count_reset_pending(*reset_identities)
+                elif (
+                    person_count is not None
+                    and is_passenger_count_reset_pending(*reset_identities)
+                ):
+                    logger.info(
+                        "Suppressing stale nonzero passenger count during developer reset bus=%s count=%s",
+                        resolved_mac,
+                        person_count,
+                    )
+                    publish_reset_count_command(
+                        bus_mac=resolved_mac,
+                        bus_id=resolved_bus_id or bus_id,
+                    )
+                    person_count = None
+                    seats_available = None
                 # Update DB
                 updated_bus = await crud.update_bus_location(
                     mac_address=resolved_mac,

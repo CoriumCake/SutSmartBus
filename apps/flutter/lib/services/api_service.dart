@@ -4,6 +4,16 @@ import '../config/api_config.dart';
 import '../models/bus.dart';
 import '../models/route_model.dart';
 
+class DeveloperPassengerResetResult {
+  final Bus bus;
+  final bool resetCommandSent;
+
+  const DeveloperPassengerResetResult({
+    required this.bus,
+    required this.resetCommandSent,
+  });
+}
+
 class ApiService {
   late final Dio _dio;
   bool get _canUsePrivilegedApi =>
@@ -427,7 +437,9 @@ class ApiService {
     }
   }
 
-  Future<Bus?> resetDeveloperBusPassengerCount(String busMac) async {
+  Future<DeveloperPassengerResetResult?> resetDeveloperBusPassengerCount(
+    String busMac,
+  ) async {
     try {
       final response = await _dio.post(
         '/api/developer-settings/reset-passenger-count',
@@ -436,7 +448,12 @@ class ApiService {
       if (response.data is Map<String, dynamic>) {
         final busJson = (response.data as Map<String, dynamic>)['bus'];
         if (busJson is Map<String, dynamic>) {
-          return Bus.fromJson(busJson);
+          return DeveloperPassengerResetResult(
+            bus: Bus.fromJson(busJson),
+            resetCommandSent:
+                (response.data as Map<String, dynamic>)['reset_command_sent'] ==
+                    true,
+          );
         }
       }
       return null;
