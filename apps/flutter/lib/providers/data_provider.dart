@@ -633,10 +633,14 @@ class DataNotifier extends StateNotifier<DataState> {
       final effectiveBusId = !_isInvalidBusId(busId) ? busId!.trim() : null;
       final nextLat = payloadLat;
       final nextLon = payloadLon;
-      final normalizedPersonCount = (data['person_count'] as int?) == null
+      final rawNewPersonCount = data['person_count'] as int?;
+      final ignoreNewZero = rawNewPersonCount == 0 &&
+          !hasPayloadLocation &&
+          !isAuthoritativePassengerPayload;
+      final normalizedPersonCount = rawNewPersonCount == null || ignoreNewZero
           ? null
           : _normalizePassengerCount(
-              data['person_count'] as int,
+              rawNewPersonCount,
               lat: payloadLat,
               lon: payloadLon,
               resetAtParking: hasPayloadLocation,
@@ -795,7 +799,10 @@ class DataNotifier extends StateNotifier<DataState> {
         _markAuthoritativePassengerCount(bus: buses[idx]);
       }
     } else if (buses.length < 50) {
-      final normalizedPersonCount = rawPersonCount == null
+      final ignoreNewZero = rawPersonCount == 0 &&
+          !hasPayloadLocation &&
+          !isAuthoritativePassengerPayload;
+      final normalizedPersonCount = rawPersonCount == null || ignoreNewZero
           ? null
           : _normalizePassengerCount(
               rawPersonCount,

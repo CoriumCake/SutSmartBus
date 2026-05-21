@@ -17,15 +17,8 @@ class RoutesScreen extends ConsumerStatefulWidget {
 }
 
 class _RoutesScreenState extends ConsumerState<RoutesScreen> {
-  int _passengerCount = 0;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchPassengerCount();
-  }
 
   @override
   void dispose() {
@@ -33,17 +26,8 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
     super.dispose();
   }
 
-  Future<void> _fetchPassengerCount() async {
-    final api = ref.read(apiServiceProvider);
-    final count = await api.fetchPassengerCount();
-    if (count != null && mounted) {
-      setState(() => _passengerCount = count);
-    }
-  }
-
   Future<void> _onRefresh() async {
     await ref.read(dataProvider.notifier).refreshBuses();
-    await _fetchPassengerCount();
   }
 
   void _handleBusPress(Bus bus) {
@@ -177,7 +161,6 @@ class _RoutesScreenState extends ConsumerState<RoutesScreen> {
                             return BusCard(
                               bus: bus,
                               routeInfo: routeInfo,
-                              passengerCount: _passengerCount,
                               onTap: () => _handleBusPress(bus),
                               showActionButton: false,
                             );

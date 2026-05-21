@@ -194,7 +194,7 @@ class OnboardBottomSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${personCount ?? 0}/40',
+                        personCount == null ? '--/40' : '$personCount/40',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
