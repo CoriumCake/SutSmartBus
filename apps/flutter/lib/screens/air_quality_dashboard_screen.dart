@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import '../providers/data_provider.dart';
+import '../providers/developer_settings_provider.dart';
+import '../providers/user_location_provider.dart';
 import '../models/bus.dart';
 import '../utils/air_quality_utils.dart';
+import '../utils/no_gps_bus_location.dart';
 import '../widgets/air_quality_map.dart';
 
 class AirQualityDashboardScreen extends ConsumerStatefulWidget {
@@ -44,6 +48,19 @@ class _AirQualityDashboardScreenState
   @override
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
+    final developerSettings = ref.watch(developerSettingsProvider);
+    final userLocation = developerSettings.noGpsModeEnabled &&
+            developerSettings.assignedBusMac?.isNotEmpty == true
+        ? ref.watch(userLocationProvider).valueOrNull
+        : null;
+    final positionedBuses = applyNoGpsAssignedBusLocation(
+      buses: buses,
+      noGpsModeEnabled: developerSettings.noGpsModeEnabled,
+      assignedBusMac: developerSettings.assignedBusMac,
+      userLocation: userLocation == null
+          ? null
+          : LatLng(userLocation.latitude, userLocation.longitude),
+    );
     final theme = Theme.of(context);
 
     // Compute stats
@@ -90,7 +107,7 @@ class _AirQualityDashboardScreenState
                     child: SizedBox(
                       height: 250,
                       child: AirQualityMapWidget(
-                        buses: buses,
+                        buses: positionedBuses,
                         timeRange: _timeRange,
                         onTimeRangeChanged: (val) {
                           setState(() => _timeRange = val);
@@ -136,7 +153,7 @@ class _AirQualityDashboardScreenState
                   style: theme.textTheme.titleLarge),
             ),
             const SizedBox(height: 8),
-            ...buses.map((bus) => _buildBusAqiTile(bus)),
+            ...positionedBuses.map((bus) => _buildBusAqiTile(bus)),
 
             const SizedBox(height: 40),
           ],
