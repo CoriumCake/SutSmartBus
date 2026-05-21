@@ -89,6 +89,14 @@ class Bus {
     return count.clamp(0, maxPassengerCount);
   }
 
+  static int? _parsePassengerCount(Map<String, dynamic> json) {
+    final count = _normalizePassengerCount(json['person_count']);
+    if (count != 0) return count;
+
+    final source = json['count_source']?.toString().toLowerCase();
+    return source == 'door' ? 0 : null;
+  }
+
   factory Bus.fromJson(Map<String, dynamic> json) {
     final timeVal = _parseLastUpdated(json['last_updated']);
 
@@ -115,7 +123,7 @@ class Bus {
       rssi: (json['rssi'] as num?)?.toInt(),
       lastUpdated: timeVal,
       routeId: json['route_id']?.toString(),
-      personCount: _normalizePassengerCount(json['person_count']),
+      personCount: _parsePassengerCount(json),
     );
   }
 

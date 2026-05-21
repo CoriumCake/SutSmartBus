@@ -127,6 +127,7 @@ async def update_bus_location(
     hum: float | None = None,
     person_count: int = None,
     rssi: int = None,
+    count_source: str | None = None,
     apply_parking_reset: bool = True,
     use_default_location_if_missing: bool = True,
 ):
@@ -193,6 +194,8 @@ async def update_bus_location(
         )
         update_data["person_count"] = normalized_count
         update_data["seats_available"] = seats_available_for_count(normalized_count)
+        if count_source:
+            update_data["count_source"] = count_source
     else:
         current_count = existing_bus.get("person_count", 0) if existing_bus else 0
         if apply_parking_reset and is_at_default_parking(effective_lat, effective_lon):

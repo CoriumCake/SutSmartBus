@@ -248,6 +248,7 @@ def on_message(client, userdata, msg):
                             seats_available=seats_available, pm2_5=None, pm10=None,
                             temp=None, hum=None,
                             person_count=current_passengers,
+                            count_source="door",
                             apply_parking_reset=has_payload_location,
                             use_default_location_if_missing=has_payload_location,
                         )
@@ -366,6 +367,7 @@ def on_message(client, userdata, msg):
                     seats_available=seats_available, pm2_5=pm2_5, pm10=pm10, temp=temp, hum=hum,
                     person_count=person_count,
                     rssi=rssi,
+                    count_source="status" if is_status_message else "telemetry",
                     apply_parking_reset=has_payload_location,
                     use_default_location_if_missing=person_count is None and not is_status_message,
                 )

@@ -12,7 +12,7 @@ class BusRouteInfo {
 class BusCard extends StatelessWidget {
   final Bus bus;
   final BusRouteInfo? routeInfo;
-  final int passengerCount;
+  final int? passengerCount;
   final VoidCallback onTap;
   final VoidCallback? onRingBell;
   final bool showActionButton;
@@ -21,7 +21,7 @@ class BusCard extends StatelessWidget {
     super.key,
     required this.bus,
     this.routeInfo,
-    this.passengerCount = 0,
+    this.passengerCount,
     required this.onTap,
     this.onRingBell,
     this.showActionButton = true,
@@ -32,6 +32,8 @@ class BusCard extends StatelessWidget {
     final isOffline = bus.isOffline;
 
     final currentPassengers = bus.personCount ?? passengerCount;
+    final passengerLabel =
+        currentPassengers == null ? '--/40' : '$currentPassengers/40';
     final pm25Value = bus.pm25 ?? 0.0;
 
     return Opacity(
@@ -147,7 +149,7 @@ class BusCard extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '$currentPassengers/40',
+                              passengerLabel,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -242,5 +244,4 @@ class BusCard extends StatelessWidget {
       ),
     );
   }
-
 }

@@ -2438,12 +2438,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final offlineBus = _ridingBusMac != null
         ? ridingBus
         : nearbyCandidateBuses.where((bus) => bus.isOffline).firstOrNull;
-    final incomingPassengerCount = actionBus?.personCount ?? 0;
-    final incomingPassengerColor = incomingPassengerCount >= 40
-        ? const Color(0xFFE53E3E)
-        : incomingPassengerCount >= 37
-            ? const Color(0xFFD69E2E)
-            : const Color(0xFF48BB78);
+    final incomingPassengerCount = actionBus?.personCount;
+    final incomingPassengerLabel =
+        incomingPassengerCount == null ? '--/40' : '$incomingPassengerCount/40';
+    final incomingPassengerColor = incomingPassengerCount == null
+        ? const Color(0xFF94A3B8)
+        : incomingPassengerCount >= 40
+            ? const Color(0xFFE53E3E)
+            : incomingPassengerCount >= 37
+                ? const Color(0xFFD69E2E)
+                : const Color(0xFF48BB78);
 
     return Positioned(
       bottom: 24,
@@ -2552,7 +2556,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               Text(
                                 shouldShowOfflineState
                                     ? 'OFFLINE'
-                                    : '$incomingPassengerCount/40',
+                                    : incomingPassengerLabel,
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -2650,7 +2654,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             _ridingBusMac == null
                                 ? (displayBusArrival?.nextStop?.stopName ?? '-')
                                 : (actionBus != null
-                                    ? '${actionBus.personCount ?? 0}/40'
+                                    ? (actionBus.personCount == null
+                                        ? '--/40'
+                                        : '${actionBus.personCount}/40')
                                     : '-'),
                             style: const TextStyle(
                               fontSize: 16,
