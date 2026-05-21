@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../config/app_theme.dart';
 
 class ShellScreen extends ConsumerWidget {
-  final Widget child;
-  const ShellScreen({super.key, required this.child});
+  final StatefulNavigationShell navigationShell;
+  const ShellScreen({super.key, required this.navigationShell});
 
   // Map tab index to route path
   static const _tabs = ['/map', '/routes', '/air-quality', '/settings'];
@@ -23,22 +23,14 @@ class ShellScreen extends ConsumerWidget {
   ];
   static const _labels = ['Map', 'Routes', 'Air Quality', 'Settings'];
 
-  int _currentIndex(BuildContext context) {
-    final location = GoRouterState.of(context).uri.path;
-    for (int i = 0; i < _tabs.length; i++) {
-      if (location.startsWith(_tabs[i])) return i;
-    }
-    return 0;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final currentIndex = _currentIndex(context);
+    final currentIndex = navigationShell.currentIndex;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      body: child,
+      body: navigationShell,
       bottomNavigationBar: Container(
         margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
         padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
@@ -87,9 +79,10 @@ class ShellScreen extends ConsumerWidget {
           child: NavigationBar(
             selectedIndex: currentIndex,
             onDestinationSelected: (index) {
-              if (index != currentIndex) {
-                context.go(_tabs[index]);
-              }
+              navigationShell.goBranch(
+                index,
+                initialLocation: index == currentIndex,
+              );
             },
             destinations: List.generate(_tabs.length, (i) {
               return NavigationDestination(

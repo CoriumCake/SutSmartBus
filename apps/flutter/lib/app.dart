@@ -21,7 +21,10 @@ import 'legal/legal_documents.dart';
 
 // Navigation keys for each tab branch
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
-final _shellNavigatorKey = GlobalKey<NavigatorState>();
+final _mapNavigatorKey = GlobalKey<NavigatorState>();
+final _routesNavigatorKey = GlobalKey<NavigatorState>();
+final _airQualityNavigatorKey = GlobalKey<NavigatorState>();
+final _settingsNavigatorKey = GlobalKey<NavigatorState>();
 
 final goRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
@@ -52,38 +55,58 @@ final goRouter = GoRouter(
         return LegalDocumentScreen(type: type);
       },
     ),
-    // Shell route wraps the bottom navigation tabs
-    ShellRoute(
-      navigatorKey: _shellNavigatorKey,
-      builder: (context, state, child) => ShellScreen(child: child),
-      routes: [
-        GoRoute(
-          path: '/map',
-          name: 'map',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: MapScreen(),
-          ),
+    // Keep each bottom tab alive so map/heatmap state survives tab switches.
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, navigationShell) =>
+          ShellScreen(navigationShell: navigationShell),
+      branches: [
+        StatefulShellBranch(
+          navigatorKey: _mapNavigatorKey,
+          routes: [
+            GoRoute(
+              path: '/map',
+              name: 'map',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: MapScreen(),
+              ),
+            ),
+          ],
         ),
-        GoRoute(
-          path: '/routes',
-          name: 'routes',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: RoutesScreen(),
-          ),
+        StatefulShellBranch(
+          navigatorKey: _routesNavigatorKey,
+          routes: [
+            GoRoute(
+              path: '/routes',
+              name: 'routes',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: RoutesScreen(),
+              ),
+            ),
+          ],
         ),
-        GoRoute(
-          path: '/air-quality',
-          name: 'airQuality',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: AirQualityScreen(),
-          ),
+        StatefulShellBranch(
+          navigatorKey: _airQualityNavigatorKey,
+          routes: [
+            GoRoute(
+              path: '/air-quality',
+              name: 'airQuality',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: AirQualityScreen(),
+              ),
+            ),
+          ],
         ),
-        GoRoute(
-          path: '/settings',
-          name: 'settings',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: SettingsScreen(),
-          ),
+        StatefulShellBranch(
+          navigatorKey: _settingsNavigatorKey,
+          routes: [
+            GoRoute(
+              path: '/settings',
+              name: 'settings',
+              pageBuilder: (context, state) => const NoTransitionPage(
+                child: SettingsScreen(),
+              ),
+            ),
+          ],
         ),
       ],
     ),
