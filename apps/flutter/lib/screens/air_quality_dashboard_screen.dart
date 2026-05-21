@@ -61,6 +61,13 @@ class _AirQualityDashboardScreenState
           ? null
           : LatLng(userLocation.latitude, userLocation.longitude),
     );
+    final assignedNoGpsBusMac = developerSettings.noGpsModeEnabled
+        ? developerSettings.assignedBusMac?.trim()
+        : null;
+    final excludedHeatmapBusMacs =
+        assignedNoGpsBusMac != null && assignedNoGpsBusMac.isNotEmpty
+            ? {assignedNoGpsBusMac}
+            : const <String>{};
     final theme = Theme.of(context);
 
     // Compute stats
@@ -108,6 +115,8 @@ class _AirQualityDashboardScreenState
                       height: 250,
                       child: AirQualityMapWidget(
                         buses: positionedBuses,
+                        heatmapBuses: buses,
+                        excludedHeatmapBusMacs: excludedHeatmapBusMacs,
                         timeRange: _timeRange,
                         onTimeRangeChanged: (val) {
                           setState(() => _timeRange = val);

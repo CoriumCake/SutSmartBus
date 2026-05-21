@@ -426,4 +426,23 @@ class ApiService {
       rethrow;
     }
   }
+
+  Future<Bus?> resetDeveloperBusPassengerCount(String busMac) async {
+    try {
+      final response = await _dio.post(
+        '/api/developer-settings/reset-passenger-count',
+        data: {'bus_mac': busMac},
+      );
+      if (response.data is Map<String, dynamic>) {
+        final busJson = (response.data as Map<String, dynamic>)['bus'];
+        if (busJson is Map<String, dynamic>) {
+          return Bus.fromJson(busJson);
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[ApiService] Error resetting passenger count: $e');
+      return null;
+    }
+  }
 }

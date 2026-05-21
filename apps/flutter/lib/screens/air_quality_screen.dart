@@ -40,6 +40,15 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
     final List<Bus> visibleBuses = debugMode
         ? positionedBuses
         : positionedBuses.where((bus) => !bus.isDebugBus).toList();
+    final List<Bus> visibleHeatmapBuses =
+        debugMode ? buses : buses.where((bus) => !bus.isDebugBus).toList();
+    final assignedNoGpsBusMac = developerSettings.noGpsModeEnabled
+        ? developerSettings.assignedBusMac?.trim()
+        : null;
+    final excludedHeatmapBusMacs =
+        assignedNoGpsBusMac != null && assignedNoGpsBusMac.isNotEmpty
+            ? {assignedNoGpsBusMac}
+            : const <String>{};
     final ThemeData theme = Theme.of(context);
 
     return Scaffold(
@@ -52,6 +61,8 @@ class _AirQualityScreenState extends ConsumerState<AirQualityScreen> {
               children: [
                 AirQualityMapWidget(
                   buses: visibleBuses,
+                  heatmapBuses: visibleHeatmapBuses,
+                  excludedHeatmapBusMacs: excludedHeatmapBusMacs,
                   timeRange: _timeRange,
                   keepControlsInSafeArea: true,
                   onTimeRangeChanged: (String range) =>

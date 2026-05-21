@@ -212,3 +212,7 @@ class AssignedBusLocationSyncRequest(BaseModel):
     bus_mac: str
     lat: float
     lon: float
+
+
+class PassengerCountResetRequest(BaseModel):
+    bus_mac: str
