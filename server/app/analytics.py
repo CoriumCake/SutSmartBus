@@ -8,16 +8,26 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from . import crud
 from .database import db
-from .passenger_rules import normalize_passenger_count
+from .passenger_rules import clamp_passenger_count, normalize_passenger_count
 from core.config import settings
 
 # Get hardware locations collection
 hardware_location_collection = db.get_collection("hardware_locations")
 
-def record_passenger_count(bus_mac: str, count: int, lat: float = 0.0, lon: float = 0.0):
+def record_passenger_count(
+    bus_mac: str,
+    count: int,
+    lat: float = 0.0,
+    lon: float = 0.0,
+    apply_parking_reset: bool = True,
+):
     """Log passenger count to SQLite history for local analytics."""
     try:
-        normalized_count = normalize_passenger_count(count, lat, lon)
+        normalized_count = (
+            normalize_passenger_count(count, lat, lon)
+            if apply_parking_reset
+            else clamp_passenger_count(count)
+        )
         with sqlite3.connect(settings.DB_FILE) as conn:
             conn.execute(
                 "INSERT INTO passenger_history (bus_mac, count, timestamp, lat, lon) VALUES (?, ?, ?, ?, ?)",

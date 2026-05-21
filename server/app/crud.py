@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import logging
 from .database import db
 from .passenger_rules import (
+    clamp_passenger_count,
     is_at_default_parking,
     normalize_passenger_count,
     seats_available_for_count,
@@ -126,6 +127,8 @@ async def update_bus_location(
     hum: float | None = None,
     person_count: int = None,
     rssi: int = None,
+    apply_parking_reset: bool = True,
+    use_default_location_if_missing: bool = True,
 ):
     # This is an 'upsert' operation: it updates a bus if it exists, or creates it if it doesn't.
     # This is useful for when a bus device comes online for the first time.
@@ -174,7 +177,7 @@ async def update_bus_location(
 
     # When a device comes online before GPS/PM hardware reports a real location,
     # place it at a predictable fallback point so the app can still render it.
-    if lat is None and lon is None:
+    if use_default_location_if_missing and lat is None and lon is None:
         if not existing_bus or existing_bus.get("current_lat") is None or existing_bus.get("current_lon") is None:
             update_data["current_lat"] = settings.DEFAULT_BUS_LAT
             update_data["current_lon"] = settings.DEFAULT_BUS_LON
@@ -183,12 +186,16 @@ async def update_bus_location(
     effective_lon = update_data.get("current_lon", existing_bus.get("current_lon") if existing_bus else None)
 
     if person_count is not None:
-        normalized_count = normalize_passenger_count(person_count, effective_lat, effective_lon)
+        normalized_count = (
+            normalize_passenger_count(person_count, effective_lat, effective_lon)
+            if apply_parking_reset
+            else clamp_passenger_count(person_count)
+        )
         update_data["person_count"] = normalized_count
         update_data["seats_available"] = seats_available_for_count(normalized_count)
     else:
         current_count = existing_bus.get("person_count", 0) if existing_bus else 0
-        if is_at_default_parking(effective_lat, effective_lon):
+        if apply_parking_reset and is_at_default_parking(effective_lat, effective_lon):
             update_data["person_count"] = 0
             update_data["seats_available"] = seats_available_for_count(0)
         else:

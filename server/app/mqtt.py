@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from . import crud, models, constants, state
 from .passenger_rules import (
+    clamp_passenger_count,
     is_at_default_parking,
     normalize_passenger_count,
     seats_available_for_count,
@@ -199,16 +200,19 @@ def on_message(client, userdata, msg):
                         bus_name,
                     )
                     return
-                resolved_lat = data.get("lat")
-                resolved_lon = data.get("lon")
+                payload_lat = data.get("lat")
+                payload_lon = data.get("lon")
+                has_payload_location = payload_lat is not None and payload_lon is not None
+                resolved_lat = payload_lat
+                resolved_lon = payload_lon
                 if resolved_lat is None and resolved_bus is not None:
                     resolved_lat = resolved_bus.get("current_lat")
                 if resolved_lon is None and resolved_bus is not None:
                     resolved_lon = resolved_bus.get("current_lon")
-                current_passengers = normalize_passenger_count(
-                    current_passengers,
-                    resolved_lat,
-                    resolved_lon,
+                current_passengers = (
+                    normalize_passenger_count(current_passengers, payload_lat, payload_lon)
+                    if has_payload_location
+                    else clamp_passenger_count(current_passengers)
                 )
                 
                 # Store in SQLite history
@@ -216,8 +220,9 @@ def on_message(client, userdata, msg):
                 record_passenger_count(
                     resolved_mac,
                     current_passengers,
-                    resolved_lat or 0.0,
-                    resolved_lon or 0.0,
+                    resolved_lat if has_payload_location else 0.0,
+                    resolved_lon if has_payload_location else 0.0,
+                    apply_parking_reset=has_payload_location,
                 )
                 
                 # Update global count in shared state
@@ -231,15 +236,22 @@ def on_message(client, userdata, msg):
                     async def sync_seats(mac):
                         seats_available = seats_available_for_count(current_passengers)
                         updated_bus = await crud.update_bus_location(
-                            mac_address=mac, lat=None, lon=None,
+                            mac_address=mac,
+                            lat=payload_lat if has_payload_location else None,
+                            lon=payload_lon if has_payload_location else None,
                             bus_id=bus_id,
                             seats_available=seats_available, pm2_5=None, pm10=None,
                             temp=None, hum=None,
-                            person_count=current_passengers
+                            person_count=current_passengers,
+                            apply_parking_reset=has_payload_location,
+                            use_default_location_if_missing=has_payload_location,
                         )
                         # Broadcast to App
                         if updated_bus:
                              app_payload = bus_document_to_app_payload(updated_bus)
+                             if not has_payload_location:
+                                 app_payload["lat"] = None
+                                 app_payload["lon"] = None
                              print(f"📡 Broadcasting to app: passengers={current_passengers}, seats={seats_available}")
                              client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
                     
@@ -275,6 +287,7 @@ def on_message(client, userdata, msg):
         bus_name = payload.get("bus_name", "").strip() or None
         lat = payload.get("lat")
         lon = payload.get("lon")
+        has_payload_location = lat is not None and lon is not None
         pm2_5 = _optional_float(payload, "pm2_5")
         pm10 = _optional_float(payload, "pm10")
         temp = _optional_float(payload, "temp")
@@ -307,10 +320,16 @@ def on_message(client, userdata, msg):
         if person_count is None:
             person_count = payload.get("count")
         if person_count is not None:
-            person_count = normalize_passenger_count(person_count, lat, lon)
-            if "seats_available" not in payload or is_at_default_parking(lat, lon):
+            person_count = (
+                normalize_passenger_count(person_count, lat, lon)
+                if has_payload_location
+                else clamp_passenger_count(person_count)
+            )
+            if "seats_available" not in payload or (
+                has_payload_location and is_at_default_parking(lat, lon)
+            ):
                 seats_available = seats_available_for_count(person_count)
-        elif is_at_default_parking(lat, lon):
+        elif has_payload_location and is_at_default_parking(lat, lon):
             person_count = 0
             seats_available = seats_available_for_count(0)
             
@@ -334,7 +353,10 @@ def on_message(client, userdata, msg):
                     lat=lat,
                     lon=lon,
                     seats_available=seats_available, pm2_5=pm2_5, pm10=pm10, temp=temp, hum=hum,
-                    person_count=person_count, rssi=rssi
+                    person_count=person_count,
+                    rssi=rssi,
+                    apply_parking_reset=has_payload_location,
+                    use_default_location_if_missing=person_count is None,
                 )
                 previous_at_parking = (
                     is_at_default_parking(

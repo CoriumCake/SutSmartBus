@@ -39,8 +39,13 @@ bool _isAtDefaultParking(double? lat, double? lon) {
       _parkingResetRadiusMeters;
 }
 
-int _normalizePassengerCount(int count, {double? lat, double? lon}) {
-  if (_isAtDefaultParking(lat, lon)) {
+int _normalizePassengerCount(
+  int count, {
+  double? lat,
+  double? lon,
+  bool resetAtParking = true,
+}) {
+  if (resetAtParking && _isAtDefaultParking(lat, lon)) {
     return 0;
   }
   return count.clamp(0, _maxBusPassengerCount).toInt();
@@ -240,7 +245,9 @@ class DataNotifier extends StateNotifier<DataState> {
       return bus;
     }
 
-    final mappedRouteId = (bus.busId != null ? _busRouteMappings[bus.busId!] : null) ??
+    final mappedRouteId = (bus.busId != null
+            ? _busRouteMappings[bus.busId!]
+            : null) ??
         _busRouteMappings[bus.busMac] ??
         (bus.macAddress != null ? _busRouteMappings[bus.macAddress!] : null);
 
@@ -402,6 +409,9 @@ class DataNotifier extends StateNotifier<DataState> {
     final busName = (data['bus_name'] as String?)?.trim();
     final count = data['count'] as int?;
     if (count == null) return;
+    final payloadLat = (data['lat'] as num?)?.toDouble();
+    final payloadLon = (data['lon'] as num?)?.toDouble();
+    final hasPayloadLocation = payloadLat != null && payloadLon != null;
 
     final buses = [...state.buses];
     int idx = _findBusIndexByIdentity(
@@ -414,14 +424,17 @@ class DataNotifier extends StateNotifier<DataState> {
     if (idx >= 0) {
       final normalizedCount = _normalizePassengerCount(
         count,
-        lat: buses[idx].currentLat,
-        lon: buses[idx].currentLon,
+        lat: payloadLat,
+        lon: payloadLon,
+        resetAtParking: hasPayloadLocation,
       );
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
         busId: busId ?? buses[idx].busId,
         busName: (busName != null && busName.isNotEmpty)
             ? busName
             : buses[idx].busName,
+        currentLat: payloadLat ?? buses[idx].currentLat,
+        currentLon: payloadLon ?? buses[idx].currentLon,
         isOnline: true,
         personCount: normalizedCount,
         seatsAvailable:
@@ -429,15 +442,21 @@ class DataNotifier extends StateNotifier<DataState> {
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
       ));
     } else if (buses.length < 50) {
-      final normalizedCount = _normalizePassengerCount(count);
-      final effectiveBusId =
-          !_isInvalidBusId(busId) ? busId!.trim() : busMac;
+      final normalizedCount = _normalizePassengerCount(
+        count,
+        lat: payloadLat,
+        lon: payloadLon,
+        resetAtParking: hasPayloadLocation,
+      );
+      final effectiveBusId = !_isInvalidBusId(busId) ? busId!.trim() : busMac;
       buses.add(_applyRouteMapping(Bus(
         id: effectiveBusId,
         busId: !_isInvalidBusId(busId) ? busId!.trim() : null,
         busMac: busMac,
         busName: busName ??
             'Bus-${effectiveBusId.length >= 4 ? effectiveBusId.substring(effectiveBusId.length - 4) : effectiveBusId}',
+        currentLat: payloadLat,
+        currentLon: payloadLon,
         isOnline: true,
         personCount: normalizedCount,
         seatsAvailable:
@@ -476,6 +495,9 @@ class DataNotifier extends StateNotifier<DataState> {
         (busName == null || busName.isEmpty)) {
       return;
     }
+    final payloadLat = (data['lat'] as num?)?.toDouble();
+    final payloadLon = (data['lon'] as num?)?.toDouble();
+    final hasPayloadLocation = payloadLat != null && payloadLon != null;
 
     final buses = [...state.buses];
     final idx = _findBusIndexByIdentity(
@@ -486,16 +508,16 @@ class DataNotifier extends StateNotifier<DataState> {
     );
 
     if (idx >= 0) {
-      final nextLat =
-          (data['lat'] as num?)?.toDouble() ?? buses[idx].currentLat;
-      final nextLon =
-          (data['lon'] as num?)?.toDouble() ?? buses[idx].currentLon;
+      final nextLat = payloadLat ?? buses[idx].currentLat;
+      final nextLon = payloadLon ?? buses[idx].currentLon;
       final rawPersonCount =
           data['person_count'] as int? ?? buses[idx].personCount;
       final normalizedPersonCount = rawPersonCount == null
           ? null
           : _normalizePassengerCount(rawPersonCount,
-              lat: nextLat, lon: nextLon);
+              lat: payloadLat,
+              lon: payloadLon,
+              resetAtParking: hasPayloadLocation);
       buses[idx] = _applyRouteMapping(buses[idx].copyWith(
         busId: busId ?? buses[idx].busId,
         busName: busName?.isNotEmpty == true ? busName! : buses[idx].busName,
@@ -519,14 +541,15 @@ class DataNotifier extends StateNotifier<DataState> {
           ? (busName ?? busId ?? 'ESP32-CAM-01')
           : busMac!;
       final effectiveBusId = !_isInvalidBusId(busId) ? busId!.trim() : null;
-      final nextLat = (data['lat'] as num?)?.toDouble();
-      final nextLon = (data['lon'] as num?)?.toDouble();
+      final nextLat = payloadLat;
+      final nextLon = payloadLon;
       final normalizedPersonCount = (data['person_count'] as int?) == null
           ? null
           : _normalizePassengerCount(
               data['person_count'] as int,
-              lat: nextLat,
-              lon: nextLon,
+              lat: payloadLat,
+              lon: payloadLon,
+              resetAtParking: hasPayloadLocation,
             );
       buses.add(_applyRouteMapping(Bus(
         id: effectiveBusId ?? effectiveBusMac,
@@ -608,10 +631,9 @@ class DataNotifier extends StateNotifier<DataState> {
     final statusBusMac = data['bus_mac']?.toString();
     final statusBusName = (data['bus_name'] as String?)?.trim();
     final componentName = data['component']?.toString().trim().toLowerCase();
-    final component =
-        (componentName != null && componentName.isNotEmpty)
-            ? componentName
-            : 'device';
+    final component = (componentName != null && componentName.isNotEmpty)
+        ? componentName
+        : 'device';
     final statusIsOnline = data['is_online'] != false;
 
     final buses = [...state.buses];
@@ -634,14 +656,18 @@ class DataNotifier extends StateNotifier<DataState> {
 
     int? count = data['count'] as int?;
     final rawPersonCount = data['person_count'] as int? ?? count;
+    final payloadLat = (data['lat'] as num?)?.toDouble();
+    final payloadLon = (data['lon'] as num?)?.toDouble();
+    final hasPayloadLocation = payloadLat != null && payloadLon != null;
 
     if (idx >= 0) {
       final normalizedPersonCount = rawPersonCount == null
           ? null
           : _normalizePassengerCount(
               rawPersonCount,
-              lat: buses[idx].currentLat,
-              lon: buses[idx].currentLon,
+              lat: payloadLat,
+              lon: payloadLon,
+              resetAtParking: hasPayloadLocation,
             );
       final seatsAvailable = normalizedPersonCount != null
           ? (_totalBusCapacity - normalizedPersonCount)
@@ -652,6 +678,8 @@ class DataNotifier extends StateNotifier<DataState> {
         busName: statusBusName?.isNotEmpty == true
             ? statusBusName!
             : buses[idx].busName,
+        currentLat: payloadLat ?? buses[idx].currentLat,
+        currentLon: payloadLon ?? buses[idx].currentLon,
         rssi: _normalizeRssi(data['rssi']),
         isOnline: combinedOnline,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,
@@ -661,7 +689,12 @@ class DataNotifier extends StateNotifier<DataState> {
     } else if (buses.length < 50) {
       final normalizedPersonCount = rawPersonCount == null
           ? null
-          : _normalizePassengerCount(rawPersonCount);
+          : _normalizePassengerCount(
+              rawPersonCount,
+              lat: payloadLat,
+              lon: payloadLon,
+              resetAtParking: hasPayloadLocation,
+            );
       final seatsAvailable = normalizedPersonCount != null
           ? (_totalBusCapacity - normalizedPersonCount)
               .clamp(0, _totalBusCapacity)
@@ -674,6 +707,8 @@ class DataNotifier extends StateNotifier<DataState> {
         busMac: statusBusMac ?? topicIdentity,
         busName: statusBusName ??
             'Bus-${(effectiveBusId ?? topicIdentity).length >= 4 ? (effectiveBusId ?? topicIdentity).substring((effectiveBusId ?? topicIdentity).length - 4) : (effectiveBusId ?? topicIdentity)}',
+        currentLat: payloadLat,
+        currentLon: payloadLon,
         rssi: _normalizeRssi(data['rssi']),
         isOnline: combinedOnline,
         lastUpdated: DateTime.now().millisecondsSinceEpoch,

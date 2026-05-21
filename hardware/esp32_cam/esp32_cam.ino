@@ -12,6 +12,10 @@
 #include "camera_pins.h"
 #include "config.h"
 
+#ifndef RING_ALLOW_UNSIGNED_COMMANDS
+#define RING_ALLOW_UNSIGNED_COMMANDS false
+#endif
+
 // Hardware Pins
 #define BUZZER_PIN        13 // Active HIGH
 
@@ -361,18 +365,24 @@ void mqttCallback(char* topic, char* payload, int qos, int retain, bool dup) {
     bool validTimestamp = timestamp > lastAcceptedRingTimestamp;
     bool validSignature = signature.length() > 0 &&
                           signature == computeRingSignature(targetBusMac.c_str(), timestamp);
+    bool acceptsSignature = validSignature || RING_ALLOW_UNSIGNED_COMMANDS;
 
-    if (isRingCommand && matchesBusMac && validTimestamp && validSignature) {
+    if (isRingCommand && matchesBusMac && validTimestamp && acceptsSignature) {
       lastAcceptedRingTimestamp = timestamp;
       ringPending = true;
-      Serial.printf("Ring command accepted for %s\n", targetBusMac.c_str());
+      Serial.printf(
+        "Ring command accepted for %s%s\n",
+        targetBusMac.c_str(),
+        validSignature ? "" : " without signature verification"
+      );
     } else {
       Serial.printf(
-        "Ring command ignored: command=%d mac=%d timestamp=%d signature=%d topic=%s target=%s\n",
+        "Ring command ignored: command=%d mac=%d timestamp=%d signature=%d allow_unsigned=%d topic=%s target=%s\n",
         isRingCommand,
         matchesBusMac,
         validTimestamp,
         validSignature,
+        RING_ALLOW_UNSIGNED_COMMANDS,
         topic,
         targetBusMac.c_str()
       );
