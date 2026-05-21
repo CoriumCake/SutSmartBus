@@ -56,6 +56,7 @@ PUBLIC_METHOD_PATHS = {
     ("POST", "/api/ring"),
     ("PUT", "/api/developer-settings"),
     ("POST", "/api/developer-settings/sync-assigned-bus-location"),
+    ("POST", "/api/developer-settings/reset-passenger-count"),
 }
 
 

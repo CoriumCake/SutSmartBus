@@ -1,6 +1,14 @@
-from fastapi import APIRouter
+import json
 
-from app import crud, schemas
+from fastapi import APIRouter, HTTPException
+
+from app import analytics as analytics_module, constants, crud, schemas, state
+from app.mqtt import (
+    bus_document_to_app_payload,
+    client as mqtt_client,
+    publish_reset_count_command,
+)
+from app.passenger_rules import seats_available_for_count
 
 router = APIRouter(prefix="/api/developer-settings", tags=["Developer Settings"])
 
@@ -36,5 +44,59 @@ async def sync_assigned_bus_location(
     )
     return {
         "success": updated_bus is not None,
+        "bus": updated_bus,
+    }
+
+
+@router.post("/reset-passenger-count")
+async def reset_passenger_count(
+    request: schemas.PassengerCountResetRequest,
+):
+    bus_mac = request.bus_mac.strip()
+    if not bus_mac:
+        raise HTTPException(status_code=400, detail="bus_mac is required")
+
+    bus = await crud.get_bus_by_mac(bus_mac)
+    if bus is None:
+        raise HTTPException(status_code=404, detail="Bus not found")
+
+    updated_bus = await crud.update_bus_location(
+        mac_address=bus["mac_address"],
+        bus_id=bus.get("bus_id"),
+        lat=None,
+        lon=None,
+        seats_available=seats_available_for_count(0),
+        person_count=0,
+        count_source="developer",
+        apply_parking_reset=False,
+        use_default_location_if_missing=False,
+    )
+    if updated_bus is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not reset passenger count",
+        )
+
+    analytics_module.record_passenger_count(
+        updated_bus["mac_address"],
+        0,
+        updated_bus.get("current_lat") or 0.0,
+        updated_bus.get("current_lon") or 0.0,
+        apply_parking_reset=False,
+    )
+    with state.state.passenger_lock:
+        state.state.current_passengers = 0
+
+    publish_reset_count_command(
+        bus_mac=updated_bus.get("mac_address"),
+        bus_id=updated_bus.get("bus_id"),
+    )
+    mqtt_client.publish(
+        constants.TOPIC_APP_LOCATION,
+        json.dumps(bus_document_to_app_payload(updated_bus)),
+    )
+
+    return {
+        "success": True,
         "bus": updated_bus,
     }

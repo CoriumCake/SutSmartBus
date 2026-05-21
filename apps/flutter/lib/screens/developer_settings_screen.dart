@@ -6,11 +6,20 @@ import '../models/bus.dart';
 import '../providers/data_provider.dart';
 import '../providers/developer_settings_provider.dart';
 
-class DeveloperSettingsScreen extends ConsumerWidget {
+class DeveloperSettingsScreen extends ConsumerStatefulWidget {
   const DeveloperSettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DeveloperSettingsScreen> createState() =>
+      _DeveloperSettingsScreenState();
+}
+
+class _DeveloperSettingsScreenState
+    extends ConsumerState<DeveloperSettingsScreen> {
+  bool _isResettingPassengerCount = false;
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = ref.watch(developerSettingsProvider);
     final buses = ref.watch(busesProvider);
@@ -66,6 +75,42 @@ class DeveloperSettingsScreen extends ConsumerWidget {
                         buses,
                         state.assignedBusMac,
                       ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ListTile(
+              leading: Icon(
+                Icons.person_remove_alt_1,
+                color: assignedBus == null
+                    ? theme.disabledColor
+                    : theme.colorScheme.error,
+              ),
+              title: const Text('Reset passenger count'),
+              subtitle: Text(
+                assignedBus == null
+                    ? 'Choose an assigned bus first.'
+                    : 'Current count: ${assignedBus.personCount?.toString() ?? "--"}. Reset ${assignedBus.busName} to 0.',
+              ),
+              trailing: _isResettingPassengerCount
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: state.isLoading ||
+                      state.isSaving ||
+                      _isResettingPassengerCount ||
+                      assignedBus == null
+                  ? null
+                  : () => _confirmResetPassengerCount(context, assignedBus),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -164,6 +209,60 @@ class DeveloperSettingsScreen extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+
+  Future<void> _confirmResetPassengerCount(
+    BuildContext context,
+    Bus bus,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset passenger count?'),
+        content: Text(
+          'This will set ${bus.busName} to 0 passengers and send a reset command to the bus counter.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    setState(() => _isResettingPassengerCount = true);
+    final updatedBus =
+        await ref.read(apiServiceProvider).resetDeveloperBusPassengerCount(
+              bus.busMac,
+            );
+    if (!mounted || !context.mounted) {
+      return;
+    }
+    setState(() => _isResettingPassengerCount = false);
+
+    if (updatedBus == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to reset passenger count.')),
+      );
+      return;
+    }
+
+    ref.read(dataProvider.notifier).updateBusLocally(updatedBus);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${updatedBus.busName} passenger count reset.')),
     );
   }
 

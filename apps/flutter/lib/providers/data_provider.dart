@@ -354,7 +354,7 @@ class DataNotifier extends StateNotifier<DataState> {
   bool _isAuthoritativePassengerPayload(Map<String, dynamic> data) {
     final source =
         (data['count_source'] ?? data['source'] ?? '').toString().toLowerCase();
-    return source == 'door' || data['dir'] != null;
+    return source == 'door' || source == 'developer' || data['dir'] != null;
   }
 
   void _markAuthoritativePassengerCount({

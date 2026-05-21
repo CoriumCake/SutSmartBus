@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -10,6 +11,8 @@ import '../utils/air_quality_utils.dart';
 
 class AirQualityMapWidget extends ConsumerStatefulWidget {
   final List<Bus> buses;
+  final List<Bus>? heatmapBuses;
+  final Set<String> excludedHeatmapBusMacs;
   final String timeRange;
   final ValueChanged<String> onTimeRangeChanged;
   final bool keepControlsInSafeArea;
@@ -17,6 +20,8 @@ class AirQualityMapWidget extends ConsumerStatefulWidget {
   const AirQualityMapWidget({
     super.key,
     required this.buses,
+    this.heatmapBuses,
+    this.excludedHeatmapBusMacs = const <String>{},
     required this.timeRange,
     required this.onTimeRangeChanged,
     this.keepControlsInSafeArea = false,
@@ -31,6 +36,7 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
   final MapController _mapController = MapController();
   List<Polygon> _polygons = [];
   List<Map<String, dynamic>> _rawHeatmapData = [];
+  List<Map<String, dynamic>> _rawZoneData = [];
   bool _loading = false;
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
@@ -47,7 +53,9 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.timeRange != widget.timeRange) {
       _fetchHeatmapData();
-    } else if (oldWidget.buses != widget.buses) {
+    } else if ((oldWidget.heatmapBuses ?? oldWidget.buses) !=
+            (widget.heatmapBuses ?? widget.buses) ||
+        oldWidget.excludedHeatmapBusMacs != widget.excludedHeatmapBusMacs) {
       _buildHeatmap(_rawHeatmapData);
     }
   }
@@ -57,7 +65,9 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
     try {
       final api = ref.read(apiServiceProvider);
       final rawData = await api.fetchHeatmapData(timeRange: widget.timeRange);
+      final zoneData = await api.fetchPMZones();
       _rawHeatmapData = rawData;
+      _rawZoneData = zoneData;
       _buildHeatmap(rawData);
     } catch (e) {
       // ignore
@@ -89,9 +99,100 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
         .toList();
   }
 
+  double? _asDouble(dynamic value) {
+    if (value is num) {
+      return value.toDouble();
+    }
+    if (value is String) {
+      return double.tryParse(value);
+    }
+    return null;
+  }
+
+  double? _readDouble(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final parsed = _asDouble(source[key]);
+      if (parsed != null) {
+        return parsed;
+      }
+    }
+    return null;
+  }
+
+  List<LatLng> _zonePoints(Map<String, dynamic> zone) {
+    final rawPoints = zone['points'];
+    if (rawPoints is List) {
+      final points = <LatLng>[];
+      for (final rawPoint in rawPoints) {
+        double? lat;
+        double? lon;
+        if (rawPoint is List && rawPoint.length >= 2) {
+          lat = _asDouble(rawPoint[0]);
+          lon = _asDouble(rawPoint[1]);
+        } else if (rawPoint is Map<String, dynamic>) {
+          lat = _readDouble(rawPoint, ['lat', 'latitude']);
+          lon = _readDouble(rawPoint, ['lon', 'longitude']);
+        }
+        if (lat != null && lon != null) {
+          points.add(LatLng(lat, lon));
+        }
+      }
+      if (points.length >= 3) {
+        return points;
+      }
+    }
+
+    final lat = _readDouble(zone, ['lat', 'latitude']);
+    final lon = _readDouble(zone, ['lon', 'longitude']);
+    if (lat == null || lon == null) {
+      return const [];
+    }
+
+    final radiusM = _readDouble(zone, ['radius']) ?? 50.0;
+    const metersPerDegree = 111320.0;
+    final latRadius = radiusM / metersPerDegree;
+    final lonRadius =
+        radiusM / (metersPerDegree * math.cos(lat * math.pi / 180));
+
+    return List.generate(24, (index) {
+      final angle = (math.pi * 2 * index) / 24;
+      return LatLng(
+        lat + math.sin(angle) * latRadius,
+        lon + math.cos(angle) * lonRadius,
+      );
+    });
+  }
+
+  List<Polygon> _buildZonePolygons() {
+    final polygons = <Polygon>[];
+    for (final zone in _rawZoneData) {
+      final pm25 = _readDouble(zone, ['avg_pm25', 'avg_pm2_5', 'pm2_5']);
+      if (pm25 == null || pm25 <= 0) {
+        continue;
+      }
+
+      final points = _zonePoints(zone);
+      if (points.length < 3) {
+        continue;
+      }
+
+      final color = getPMColor(pm25);
+      polygons.add(
+        Polygon(
+          points: points,
+          color: color.withValues(alpha: 0.28),
+          borderColor: color.withValues(alpha: 0.65),
+          borderStrokeWidth: 1,
+        ),
+      );
+    }
+    return polygons;
+  }
+
   void _buildHeatmap(List<Map<String, dynamic>> rawData) {
     // Snap to grid
     final grid = <String, List<double>>{};
+    final liveHeatmapBuses = widget.heatmapBuses ?? widget.buses;
 
     double snap(double val) => (val / _gridSize).round() * _gridSize;
 
@@ -102,16 +203,19 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
 
     // Add API data
     for (final point in rawData) {
-      final lat = point['latitude'] as double? ?? point['lat'] as double?;
-      final lon = point['longitude'] as double? ?? point['lon'] as double?;
-      final pm25 = point['weight'] as double? ?? point['pm2_5'] as double?;
+      final lat = _readDouble(point, ['latitude', 'lat']);
+      final lon = _readDouble(point, ['longitude', 'lon']);
+      final pm25 = _readDouble(point, ['weight', 'pm2_5']);
       if (lat != null && lon != null && pm25 != null) {
         addPoint(lat, lon, pm25);
       }
     }
 
     // Add live bus data
-    for (final bus in widget.buses) {
+    for (final bus in liveHeatmapBuses) {
+      if (widget.excludedHeatmapBusMacs.contains(bus.busMac)) {
+        continue;
+      }
       if (bus.currentLat != null &&
           bus.currentLon != null &&
           bus.pm25 != null) {
@@ -119,7 +223,7 @@ class _AirQualityMapWidgetState extends ConsumerState<AirQualityMapWidget> {
       }
     }
 
-    final newPolygons = <Polygon>[];
+    final newPolygons = _buildZonePolygons();
 
     grid.forEach((key, values) {
       final parts = key.split(',');

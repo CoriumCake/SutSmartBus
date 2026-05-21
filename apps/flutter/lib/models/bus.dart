@@ -94,7 +94,7 @@ class Bus {
     if (count != 0) return count;
 
     final source = json['count_source']?.toString().toLowerCase();
-    return source == 'door' ? 0 : null;
+    return source == 'door' || source == 'developer' ? 0 : null;
   }
 
   factory Bus.fromJson(Map<String, dynamic> json) {
