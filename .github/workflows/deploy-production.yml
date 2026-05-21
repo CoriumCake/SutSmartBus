@@ -50,7 +50,9 @@ jobs:
         run: |
           cd "$DEPLOY_PATH"
           git fetch origin "$DEPLOY_BRANCH"
-          git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+          git reset --hard
+          git clean -fd
+          git checkout -f "$DEPLOY_BRANCH" || git checkout -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
           git reset --hard "origin/$DEPLOY_BRANCH"
           git clean -fd
 
