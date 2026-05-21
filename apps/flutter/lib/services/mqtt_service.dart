@@ -10,6 +10,7 @@ typedef MqttMessageCallback = void Function(
 typedef CamCountCallback = void Function(int count);
 
 const _camCountTopic = 'sut/esp32_cam/count';
+const _doorCountTopic = 'bus/door/count';
 
 class MqttService {
   MqttClient? _client;
@@ -30,7 +31,7 @@ class MqttService {
     'sut/bus/gps/fast',
     'sut/bus/gps',
     'sut/person-detection',
-    'bus/door/count',
+    _doorCountTopic,
     'sut/bus/+/status',
   ];
 
@@ -74,14 +75,14 @@ class MqttService {
 
       _statusController.add(MqttConnectionState.connecting);
       if (kDebugMode) {
-        print(
+        debugPrint(
           '[MqttService] Connecting to $wsUrl '
           '(scheme=${uri.scheme}, host=${uri.host}, port=$effectivePort, path=${uri.path})',
         );
       }
       await _client!.connect();
       if (kDebugMode && _client!.connectionStatus != null) {
-        print(
+        debugPrint(
           '[MqttService] Connect result: '
           '${_client!.connectionStatus!.state} '
           'code=${_client!.connectionStatus!.returnCode}',
@@ -89,7 +90,7 @@ class MqttService {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('[MqttService] Connection error: $e');
+        debugPrint('[MqttService] Connection error: $e');
       }
     } finally {
       _isConnecting = false;
@@ -98,13 +99,16 @@ class MqttService {
 
   void _onConnected() {
     if (kDebugMode) {
-      print('[MqttService] Connected to MQTT Broker');
+      debugPrint('[MqttService] Connected to MQTT Broker');
     }
     _statusController.add(MqttConnectionState.connected);
 
     // Subscribe to all topics
     for (final topic in _topics) {
       _client!.subscribe(topic, MqttQos.atMostOnce);
+    }
+    if (_camCountCallback != null) {
+      _client!.subscribe(_camCountTopic, MqttQos.atMostOnce);
     }
 
     // Listen for messages
@@ -115,16 +119,18 @@ class MqttService {
 
         try {
           final data = jsonDecode(payloadStr) as Map<String, dynamic>;
-          // Route ESP32-CAM count messages to the dedicated callback
-          if (msg.topic == _camCountTopic && _camCountCallback != null) {
-            final count = data['count'];
-            if (count is int) _camCountCallback!(count);
-          } else {
+          // Route ESP32-CAM count messages to the dedicated callback.
+          if ((msg.topic == _camCountTopic || msg.topic == _doorCountTopic) &&
+              _camCountCallback != null) {
+            final count = _parseCount(data['count'] ?? data['person_count']);
+            if (count != null) _camCountCallback!(count);
+          }
+          if (msg.topic != _camCountTopic) {
             onMessage?.call(msg.topic, data);
           }
         } catch (e) {
           if (kDebugMode) {
-            print('[MqttService] Parse error on topic ${msg.topic}: $e');
+            debugPrint('[MqttService] Parse error on topic ${msg.topic}: $e');
           }
         }
       }
@@ -134,7 +140,7 @@ class MqttService {
   void _onDisconnected() {
     if (kDebugMode) {
       final status = _client?.connectionStatus;
-      print(
+      debugPrint(
         '[MqttService] Disconnected from MQTT Broker '
         '(state=${status?.state}, code=${status?.returnCode})',
       );
@@ -167,6 +173,11 @@ class MqttService {
 
   /// Whether a cam-count subscription is currently active.
   bool get isCamCountSubscribed => _camCountCallback != null;
+
+  int? _parseCount(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
 
   void dispose() {
     _statusController.close();
