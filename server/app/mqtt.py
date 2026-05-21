@@ -13,9 +13,12 @@ from .passenger_rules import (
     normalize_passenger_count,
     seats_available_for_count,
 )
+from .security import sign_bus_command
 from core.config import settings
 
 logger = logging.getLogger(__name__)
+RESET_COUNT_COMMAND_COOLDOWN_SECONDS = 60
+_last_reset_count_command_at: dict[str, int] = {}
 
 
 def _optional_float(payload: dict, key: str) -> float | None:
@@ -26,6 +29,10 @@ def _optional_float(payload: dict, key: str) -> float | None:
 
 def _is_status_topic(topic: str) -> bool:
     return topic.startswith("sut/bus/") and topic.endswith("/status")
+
+
+def _ring_secret() -> str:
+    return settings.RING_COMMAND_SECRET or settings.API_SECRET_KEY
 
 
 def bus_document_to_app_payload(bus_doc: dict) -> dict:
@@ -67,6 +74,40 @@ async def resolve_bus_identity(
     resolved_mac = bus.get("mac_address") if bus else bus_mac
     resolved_name = bus.get("bus_name") if bus else bus_name
     return bus, resolved_bus_id, resolved_mac, resolved_name
+
+
+def publish_reset_count_command(*, bus_mac: str | None, bus_id: str | None = None):
+    secret = _ring_secret()
+    if not secret:
+        logger.warning("Skipping ESP32-CAM reset command because no command secret is configured")
+        return
+
+    targets = []
+    for target in (bus_mac, bus_id):
+        normalized = (target or "").strip()
+        if normalized and normalized not in targets:
+            targets.append(normalized)
+
+    timestamp = int(time.time())
+    for target in targets:
+        last_sent_at = _last_reset_count_command_at.get(target)
+        if last_sent_at is not None and timestamp - last_sent_at < RESET_COUNT_COMMAND_COOLDOWN_SECONDS:
+            continue
+
+        payload = {
+            "command": "reset_count",
+            "bus_mac": target,
+            "timestamp": timestamp,
+            "sig": sign_bus_command(
+                command="reset_count",
+                secret=secret,
+                bus_mac=target,
+                timestamp=timestamp,
+            ),
+        }
+        client.publish(constants.ring_topic_for_bus(target), json.dumps(payload), qos=1)
+        _last_reset_count_command_at[target] = timestamp
+        logger.info("Published ESP32-CAM passenger reset command target=%s", target)
 
 # Helper for Point in Polygon (Ray Casting)
 def is_point_in_polygon(lat: float, lon: float, polygon: list):
@@ -371,14 +412,6 @@ def on_message(client, userdata, msg):
                     apply_parking_reset=has_payload_location,
                     use_default_location_if_missing=person_count is None and not is_status_message,
                 )
-                previous_at_parking = (
-                    is_at_default_parking(
-                        previous_bus.get("current_lat"),
-                        previous_bus.get("current_lon"),
-                    )
-                    if previous_bus
-                    else False
-                )
                 current_at_parking = (
                     is_at_default_parking(
                         updated_bus.get("current_lat"),
@@ -390,15 +423,18 @@ def on_message(client, userdata, msg):
                 if (
                     updated_bus
                     and current_at_parking
-                    and not previous_at_parking
-                    and int((previous_bus or {}).get("person_count", 0) or 0) > 0
                 ):
-                    from .analytics import record_passenger_count
-                    record_passenger_count(
-                        resolved_mac,
-                        0,
-                        updated_bus.get("current_lat") or 0.0,
-                        updated_bus.get("current_lon") or 0.0,
+                    if int((previous_bus or {}).get("person_count", 0) or 0) > 0:
+                        from .analytics import record_passenger_count
+                        record_passenger_count(
+                            resolved_mac,
+                            0,
+                            updated_bus.get("current_lat") or 0.0,
+                            updated_bus.get("current_lon") or 0.0,
+                        )
+                    publish_reset_count_command(
+                        bus_mac=resolved_mac,
+                        bus_id=resolved_bus_id or bus_id,
                     )
                 # Create history entry
                 if lat is not None and lon is not None:

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app import crud
+from app.passenger_rules import normalize_passenger_count
 from core.config import settings
 
 # Keep ride start validation aligned with the Flutter boarding gate in
@@ -16,6 +17,7 @@ RIDE_SESSION_DURATION = timedelta(minutes=30)
 RIDE_RING_COOLDOWN = timedelta(seconds=30)
 RIDE_MIN_ACTIVE_BEFORE_RING = timedelta(seconds=15)
 RIDE_MAX_RINGS_PER_SESSION = 3
+RECENT_PASSENGER_COUNT_MAX_AGE_SECONDS = 120
 
 
 class RideSessionError(Exception):
@@ -132,6 +134,93 @@ async def _get_bus_or_raise(bus_mac: str) -> dict:
     return bus
 
 
+def _latest_passenger_count(
+    bus_mac: str,
+    max_age_seconds: Optional[int] = None,
+) -> Optional[int]:
+    if not bus_mac:
+        return None
+
+    try:
+        with sqlite3.connect(settings.DB_FILE) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT count, timestamp, lat, lon
+                FROM passenger_history
+                WHERE bus_mac = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (bus_mac,),
+            ).fetchone()
+    except sqlite3.Error:
+        return None
+
+    if row is None:
+        return None
+
+    if max_age_seconds is not None:
+        try:
+            timestamp = datetime.fromisoformat(
+                str(row["timestamp"]).replace("Z", "+00:00"),
+            )
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)
+            if age > timedelta(seconds=max_age_seconds):
+                return None
+        except (TypeError, ValueError):
+            return None
+
+    return normalize_passenger_count(
+        row["count"],
+        row["lat"] if "lat" in row.keys() else None,
+        row["lon"] if "lon" in row.keys() else None,
+    )
+
+
+def _recent_passenger_history_count(bus: dict, requested_bus_mac: str) -> Optional[int]:
+    candidates = [
+        bus.get("mac_address"),
+        bus.get("bus_mac"),
+        bus.get("bus_id"),
+        requested_bus_mac,
+        bus.get("bus_name"),
+    ]
+    seen = set()
+    latest_counts = []
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        key = str(candidate).strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+
+        count = _latest_passenger_count(
+            key,
+            max_age_seconds=RECENT_PASSENGER_COUNT_MAX_AGE_SECONDS,
+        )
+        if count is None:
+            continue
+        if count > 0:
+            return count
+        latest_counts.append(count)
+
+    return latest_counts[0] if latest_counts else None
+
+
+def _effective_passenger_count(bus: dict, requested_bus_mac: str) -> int:
+    stored_count = int(bus.get("person_count") or 0)
+    history_count = _recent_passenger_history_count(bus, requested_bus_mac)
+    if history_count is not None:
+        return history_count
+
+    return stored_count
+
+
 async def start_ride_session(
     *,
     device_id: str,
@@ -141,7 +230,7 @@ async def start_ride_session(
     user_accuracy_m: Optional[float] = None,
 ) -> RideSession:
     bus = await _get_bus_or_raise(bus_mac)
-    if int(bus.get("person_count") or 0) <= 0:
+    if _effective_passenger_count(bus, bus_mac) <= 0:
         raise RideSessionForbiddenError("Cannot start a ride while the bus is empty")
     distance = _distance_m(
         user_lat,
