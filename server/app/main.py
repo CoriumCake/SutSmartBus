@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app import crud, state
 from app.routers import (
     buses, routes, ota, analytics, passengers, 
-    system, admin, dashboard, feedback, pm_zones
+    system, admin, dashboard, feedback, pm_zones, developer_settings
 )
 from app.mqtt import client as mqtt_client, connect_mqtt, start_mqtt_loop, stop_mqtt_loop
 from core.config import settings
@@ -147,6 +147,7 @@ app.include_router(analytics.router)
 app.include_router(passengers.router)
 app.include_router(feedback.router)
 app.include_router(pm_zones.router)
+app.include_router(developer_settings.router)
 app.include_router(admin.router)
 
 # --- Static Assets ---

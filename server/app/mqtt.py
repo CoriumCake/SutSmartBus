@@ -35,6 +35,19 @@ def _ring_secret() -> str:
     return settings.RING_COMMAND_SECRET or settings.API_SECRET_KEY
 
 
+def _coerce_location_override(
+    *,
+    no_gps_mode_enabled: bool,
+    lat: float | None,
+    lon: float | None,
+) -> tuple[float | None, float | None, bool]:
+    if no_gps_mode_enabled:
+        return None, None, False
+
+    has_payload_location = lat is not None and lon is not None
+    return lat, lon, has_payload_location
+
+
 def bus_document_to_app_payload(bus_doc: dict) -> dict:
     """Normalize a Mongo bus document to the app's MQTT payload shape."""
     if not bus_doc:
@@ -74,6 +87,34 @@ async def resolve_bus_identity(
     resolved_mac = bus.get("mac_address") if bus else bus_mac
     resolved_name = bus.get("bus_name") if bus else bus_name
     return bus, resolved_bus_id, resolved_mac, resolved_name
+
+
+async def resolve_effective_bus_identity(
+    *,
+    bus_mac: str,
+    bus_name: str | None,
+    bus_id: str | None = None,
+    no_gps_mode_enabled: bool = False,
+    assigned_bus_mac: str | None = None,
+):
+    requested_assigned_mac = (assigned_bus_mac or "").strip()
+    if no_gps_mode_enabled and requested_assigned_mac:
+        assigned_bus, assigned_bus_id, assigned_mac, assigned_name = (
+            await resolve_bus_identity(
+                requested_assigned_mac,
+                None,
+                None,
+            )
+        )
+        effective_assigned_mac = assigned_mac or requested_assigned_mac
+        return (
+            assigned_bus,
+            assigned_bus_id,
+            effective_assigned_mac,
+            assigned_name,
+        )
+
+    return await resolve_bus_identity(bus_mac, bus_name, bus_id)
 
 
 def publish_reset_count_command(*, bus_mac: str | None, bus_id: str | None = None):
@@ -228,17 +269,43 @@ def on_message(client, userdata, msg):
                 current_passengers = data.get('count', 0)
 
                 resolved_bus = None
+                should_reset_at_terminal_stop = True
+                no_gps_mode_enabled = False
+                assigned_bus_mac = None
                 if state.state.main_loop:
                     async def resolve_bus():
-                        bus, _, _, _ = await resolve_bus_identity(bus_mac, bus_name, bus_id)
+                        developer_settings = await crud.get_developer_settings()
+                        bus, _, _, _ = await resolve_effective_bus_identity(
+                            bus_mac=bus_mac,
+                            bus_name=bus_name,
+                            bus_id=bus_id,
+                            no_gps_mode_enabled=bool(
+                                developer_settings["no_gps_mode_enabled"]
+                            ),
+                            assigned_bus_mac=developer_settings.get("assigned_bus_mac"),
+                        )
                         return bus
 
                     resolved_bus = asyncio.run_coroutine_threadsafe(
                         resolve_bus(),
                         state.state.main_loop,
                     ).result(timeout=1)
+                    should_reset_at_terminal_stop = asyncio.run_coroutine_threadsafe(
+                        crud.get_reset_passenger_count_at_terminal_stop(),
+                        state.state.main_loop,
+                    ).result(timeout=1)
+                    no_gps_mode_enabled = asyncio.run_coroutine_threadsafe(
+                        crud.get_no_gps_mode_enabled(),
+                        state.state.main_loop,
+                    ).result(timeout=1)
+                    assigned_bus_mac = asyncio.run_coroutine_threadsafe(
+                        crud.get_developer_settings(),
+                        state.state.main_loop,
+                    ).result(timeout=1).get("assigned_bus_mac")
 
-                resolved_mac = resolved_bus.get("mac_address") if resolved_bus else bus_mac
+                resolved_mac = resolved_bus.get("mac_address") if resolved_bus else (
+                    assigned_bus_mac or bus_mac
+                )
                 if not resolved_mac:
                     logger.warning(
                         "Skipping door count message without a resolvable bus identity: bus_id=%s bus_name=%s",
@@ -248,7 +315,11 @@ def on_message(client, userdata, msg):
                     return
                 payload_lat = data.get("lat")
                 payload_lon = data.get("lon")
-                has_payload_location = payload_lat is not None and payload_lon is not None
+                payload_lat, payload_lon, has_payload_location = _coerce_location_override(
+                    no_gps_mode_enabled=no_gps_mode_enabled,
+                    lat=payload_lat,
+                    lon=payload_lon,
+                )
                 resolved_lat = payload_lat
                 resolved_lon = payload_lon
                 if resolved_lat is None and resolved_bus is not None:
@@ -257,7 +328,7 @@ def on_message(client, userdata, msg):
                     resolved_lon = resolved_bus.get("current_lon")
                 current_passengers = (
                     normalize_passenger_count(current_passengers, payload_lat, payload_lon)
-                    if has_payload_location
+                    if has_payload_location and should_reset_at_terminal_stop
                     else clamp_passenger_count(current_passengers)
                 )
                 
@@ -268,7 +339,9 @@ def on_message(client, userdata, msg):
                     current_passengers,
                     resolved_lat if has_payload_location else 0.0,
                     resolved_lon if has_payload_location else 0.0,
-                    apply_parking_reset=has_payload_location,
+                    apply_parking_reset=(
+                        has_payload_location and should_reset_at_terminal_stop
+                    ),
                 )
                 
                 # Update global count in shared state
@@ -290,7 +363,9 @@ def on_message(client, userdata, msg):
                             temp=None, hum=None,
                             person_count=current_passengers,
                             count_source="door",
-                            apply_parking_reset=has_payload_location,
+                            apply_parking_reset=(
+                                has_payload_location and should_reset_at_terminal_stop
+                            ),
                             use_default_location_if_missing=has_payload_location,
                         )
                         # Broadcast to App
@@ -342,6 +417,32 @@ def on_message(client, userdata, msg):
         temp = _optional_float(payload, "temp")
         hum = _optional_float(payload, "hum")
         seats_available = int(payload.get("seats_available", 0))
+        should_reset_at_terminal_stop = True
+        no_gps_mode_enabled = False
+        assigned_bus_mac = None
+        if state.state.main_loop:
+            try:
+                developer_settings = asyncio.run_coroutine_threadsafe(
+                    crud.get_developer_settings(),
+                    state.state.main_loop,
+                ).result(timeout=1)
+                should_reset_at_terminal_stop = asyncio.run_coroutine_threadsafe(
+                    crud.get_reset_passenger_count_at_terminal_stop(),
+                    state.state.main_loop,
+                ).result(timeout=1)
+                no_gps_mode_enabled = bool(
+                    developer_settings.get("no_gps_mode_enabled")
+                )
+                assigned_bus_mac = developer_settings.get("assigned_bus_mac")
+            except Exception:
+                should_reset_at_terminal_stop = True
+                no_gps_mode_enabled = False
+                assigned_bus_mac = None
+        lat, lon, has_payload_location = _coerce_location_override(
+            no_gps_mode_enabled=no_gps_mode_enabled,
+            lat=lat,
+            lon=lon,
+        )
         missing_sensor_fields = [
             key
             for key in ("pm2_5", "pm10", "temp", "hum")
@@ -371,18 +472,24 @@ def on_message(client, userdata, msg):
         if person_count is not None:
             person_count = (
                 normalize_passenger_count(person_count, lat, lon)
-                if has_payload_location
+                if has_payload_location and should_reset_at_terminal_stop
                 else clamp_passenger_count(person_count)
             )
             if is_status_message and not has_payload_location and person_count == 0:
                 person_count = None
                 seats_available = None
             if "seats_available" not in payload or (
-                has_payload_location and is_at_default_parking(lat, lon)
+                has_payload_location
+                and should_reset_at_terminal_stop
+                and is_at_default_parking(lat, lon)
             ):
                 if person_count is not None:
                     seats_available = seats_available_for_count(person_count)
-        elif has_payload_location and is_at_default_parking(lat, lon):
+        elif (
+            has_payload_location
+            and should_reset_at_terminal_stop
+            and is_at_default_parking(lat, lon)
+        ):
             person_count = 0
             seats_available = seats_available_for_count(0)
             
@@ -392,10 +499,12 @@ def on_message(client, userdata, msg):
 
         if state.state.main_loop:
             async def process_update_async():
-                resolved_bus, resolved_bus_id, resolved_mac, resolved_name = await resolve_bus_identity(
-                    bus_mac,
-                    bus_name,
-                    bus_id,
+                resolved_bus, resolved_bus_id, resolved_mac, resolved_name = await resolve_effective_bus_identity(
+                    bus_mac=bus_mac,
+                    bus_name=bus_name,
+                    bus_id=bus_id,
+                    no_gps_mode_enabled=no_gps_mode_enabled,
+                    assigned_bus_mac=assigned_bus_mac,
                 )
                 previous_bus = resolved_bus
                 # Update DB
@@ -409,7 +518,9 @@ def on_message(client, userdata, msg):
                     person_count=person_count,
                     rssi=rssi,
                     count_source="status" if is_status_message else "telemetry",
-                    apply_parking_reset=has_payload_location,
+                    apply_parking_reset=(
+                        has_payload_location and should_reset_at_terminal_stop
+                    ),
                     use_default_location_if_missing=person_count is None and not is_status_message,
                 )
                 current_at_parking = (
@@ -423,6 +534,7 @@ def on_message(client, userdata, msg):
                 if (
                     updated_bus
                     and current_at_parking
+                    and should_reset_at_terminal_stop
                 ):
                     if int((previous_bus or {}).get("person_count", 0) or 0) > 0:
                         from .analytics import record_passenger_count
@@ -457,47 +569,27 @@ def on_message(client, userdata, msg):
                         hum or 0.0,
                     )
 
+                if updated_bus and msg.topic != constants.TOPIC_ESP32_GPS_FAST:
+                    app_payload = bus_document_to_app_payload(updated_bus)
+                    app_payload["count_source"] = (
+                        "status" if is_status_message else "telemetry"
+                    )
+                    logger.debug(
+                        "Publishing app payload bus=%s pm2_5=%s pm10=%s temp=%s hum=%s lat=%s lon=%s",
+                        resolved_mac,
+                        app_payload.get("pm2_5"),
+                        app_payload.get("pm10"),
+                        app_payload.get("temp"),
+                        app_payload.get("hum"),
+                        app_payload.get("lat"),
+                        app_payload.get("lon"),
+                    )
+                    client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
+
                 return resolved_bus_id, resolved_mac, resolved_name, updated_bus
 
             fut = asyncio.run_coroutine_threadsafe(process_update_async(), state.state.main_loop)
             fut.add_done_callback(log_future_done)
-            
-            # Broadcast to App if not fast GPS
-            if msg.topic != constants.TOPIC_ESP32_GPS_FAST:
-                resolved_bus_id = bus_id
-                resolved_mac = bus_mac
-                resolved_name = bus_name
-                try:
-                    resolved_bus, matched_bus_id, matched_mac, matched_name = asyncio.run_coroutine_threadsafe(
-                        resolve_bus_identity(bus_mac, bus_name, bus_id),
-                        state.state.main_loop,
-                    ).result(timeout=1)
-                    resolved_bus_id = matched_bus_id
-                    resolved_mac = matched_mac
-                    resolved_name = matched_name
-                except Exception:
-                    pass
-
-                app_payload = {
-                    "bus_id": resolved_bus_id,
-                    "bus_mac": resolved_mac, "bus_name": resolved_name, "lat": lat, "lon": lon,
-                    "pm2_5": pm2_5, "pm10": pm10, "temp": temp, "hum": hum, 
-                    "seats_available": seats_available,
-                    "person_count": person_count,
-                    "rssi": rssi,
-                    "count_source": "status" if is_status_message else "telemetry",
-                }
-                logger.debug(
-                    "Publishing app payload bus=%s pm2_5=%s pm10=%s temp=%s hum=%s lat=%s lon=%s",
-                    resolved_mac,
-                    pm2_5,
-                    pm10,
-                    temp,
-                    hum,
-                    lat,
-                    lon,
-                )
-                client.publish(constants.TOPIC_APP_LOCATION, json.dumps(app_payload))
 
     except Exception as e:
         print(f"Error in on_message (topic={msg.topic}): {e}")

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from . import crud
 from .database import db
-from .passenger_rules import clamp_passenger_count, normalize_passenger_count
+from .passenger_rules import clamp_passenger_count
 from core.config import settings
 
 # Get hardware locations collection
@@ -60,11 +60,7 @@ def get_passenger_history(hours: int = 24) -> List[dict]:
     normalized_rows = []
     for row in rows:
         item = dict(row)
-        item["count"] = normalize_passenger_count(
-            item.get("count"),
-            item.get("lat"),
-            item.get("lon"),
-        )
+        item["count"] = clamp_passenger_count(item.get("count"))
         normalized_rows.append(item)
 
     return normalized_rows
@@ -117,19 +113,11 @@ def get_pax_stats(period: str = "daily") -> dict:
     peak_row = None
 
     for row in rows:
-        count = normalize_passenger_count(
-            row["count"],
-            row["lat"] if "lat" in row.keys() else None,
-            row["lon"] if "lon" in row.keys() else None,
-        )
+        count = clamp_passenger_count(row["count"])
         total_count += count
 
         peak_count = (
-            normalize_passenger_count(
-                peak_row["count"],
-                peak_row["lat"] if peak_row is not None and "lat" in peak_row.keys() else None,
-                peak_row["lon"] if peak_row is not None and "lon" in peak_row.keys() else None,
-            )
+            clamp_passenger_count(peak_row["count"])
             if peak_row is not None
             else -1
         )
@@ -173,11 +161,7 @@ def get_pax_stats(period: str = "daily") -> dict:
         "period": period_key,
         "total_samples": len(rows),
         "overall_average": round(total_count / len(rows), 2),
-        "peak_count": normalize_passenger_count(
-            peak_row["count"],
-            peak_row["lat"] if peak_row is not None and "lat" in peak_row.keys() else None,
-            peak_row["lon"] if peak_row is not None and "lon" in peak_row.keys() else None,
-        ) if peak_row is not None else 0,
+        "peak_count": clamp_passenger_count(peak_row["count"]) if peak_row is not None else 0,
         "peak_timestamp": peak_row["timestamp"] if peak_row is not None else None,
         "buckets": buckets,
     }

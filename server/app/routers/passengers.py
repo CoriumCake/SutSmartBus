@@ -1,20 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query, Body, Response
-from typing import List, Optional, Annotated
-from datetime import datetime
-import json
+from fastapi import APIRouter, HTTPException, Query
 import sqlite3
-from app import analytics as analytics_module
-from app.passenger_rules import normalize_passenger_count
+from app import analytics as analytics_module, crud
+from app.passenger_rules import clamp_passenger_count
 from core.config import settings
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/passengers", tags=["Passengers"])
-
-class PassengerUpdate(BaseModel):
-    bus_mac: str
-    count: int
-    lat: float = 0.0
-    lon: float = 0.0
 
 @router.post("/update-count")
 async def update_passenger_count(
@@ -28,11 +18,13 @@ async def update_passenger_count(
     Updates SQLite DB for history.
     """
     try:
+        apply_parking_reset = await crud.get_reset_passenger_count_at_terminal_stop()
         normalized_count = analytics_module.record_passenger_count(
             bus_mac,
             count,
             lat,
             lon,
+            apply_parking_reset=apply_parking_reset,
         )
         return {"success": True, "bus": bus_mac, "new_count": normalized_count}
     except Exception as e:
@@ -59,7 +51,7 @@ async def get_latest_pax_counts():
         normalized_rows = []
         for row in rows:
             item = dict(row)
-            item["count"] = normalize_passenger_count(item.get("count"))
+            item["count"] = clamp_passenger_count(item.get("count"))
             normalized_rows.append(item)
 
         return normalized_rows

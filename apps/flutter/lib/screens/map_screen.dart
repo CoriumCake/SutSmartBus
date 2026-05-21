@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import '../config/app_theme.dart';
 import '../services/bus_service.dart';
 import '../providers/data_provider.dart';
+import '../providers/developer_settings_provider.dart';
 import '../providers/debug_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/test_mode_provider.dart';
@@ -125,6 +126,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   bool _isStartingRide = false;
   bool _isRingingBell = false;
   bool _isRingBellAvailable = false;
+  String? _noGpsAssignedBusMac;
+  LatLng? _lastNoGpsSyncedPoint;
+  DateTime? _lastNoGpsSyncedAt;
+  bool _isSyncingNoGpsBusLocation = false;
 
   static const _sutCenter = LatLng(14.8820, 102.0207);
   static const Color _mapAccent = AppTheme.sutOrange;
@@ -185,9 +190,113 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       if (mounted) {
         if (!ref.read(testModeProvider).enabled) {
           setState(() => _userLocation = position);
+          _maybeSyncNoGpsAssignedBus(
+            buses: ref.read(busesProvider),
+            noGpsModeEnabled:
+                ref.read(developerSettingsProvider).noGpsModeEnabled,
+          );
         }
       }
     });
+  }
+
+  Bus? _resolveNoGpsAssignedBus(List<Bus> buses) {
+    if (buses.isEmpty) {
+      return null;
+    }
+
+    final assignedBusMac = ref.read(developerSettingsProvider).assignedBusMac;
+    if (assignedBusMac != null && assignedBusMac.isNotEmpty) {
+      for (final bus in buses) {
+        if (bus.busMac == assignedBusMac) {
+          return bus;
+        }
+      }
+    }
+
+    final preferredMac = _ridingBusMac ?? _activeBusMac ?? _selectedInfoBusMac;
+    if (preferredMac != null) {
+      for (final bus in buses) {
+        if (bus.busMac == preferredMac) {
+          return bus;
+        }
+      }
+    }
+
+    final onlineBuses = buses.where((bus) => !bus.isOffline).toList();
+    if (onlineBuses.length == 1) {
+      return onlineBuses.first;
+    }
+
+    if (buses.length == 1) {
+      return buses.first;
+    }
+
+    return null;
+  }
+
+  Future<void> _maybeSyncNoGpsAssignedBus({
+    required List<Bus> buses,
+    required bool noGpsModeEnabled,
+  }) async {
+    final userLocation = _userLocation;
+    if (!noGpsModeEnabled || userLocation == null) {
+      _noGpsAssignedBusMac = null;
+      _lastNoGpsSyncedPoint = null;
+      _lastNoGpsSyncedAt = null;
+      return;
+    }
+
+    final assignedBus = _resolveNoGpsAssignedBus(buses);
+    if (assignedBus == null) {
+      return;
+    }
+
+    final nextPoint = LatLng(userLocation.latitude, userLocation.longitude);
+    final now = DateTime.now();
+    final timeSinceLastSync =
+        _lastNoGpsSyncedAt == null ? null : now.difference(_lastNoGpsSyncedAt!);
+    final movedDistanceM = _lastNoGpsSyncedPoint == null
+        ? null
+        : getDistanceFromLatLonInM(
+            _lastNoGpsSyncedPoint!.latitude,
+            _lastNoGpsSyncedPoint!.longitude,
+            nextPoint.latitude,
+            nextPoint.longitude,
+          );
+    final busChanged = _noGpsAssignedBusMac != assignedBus.busMac;
+    final shouldSync = busChanged ||
+        _lastNoGpsSyncedAt == null ||
+        (timeSinceLastSync != null && timeSinceLastSync.inSeconds >= 8) ||
+        (movedDistanceM != null && movedDistanceM >= 10);
+
+    if (!shouldSync || _isSyncingNoGpsBusLocation) {
+      return;
+    }
+
+    _isSyncingNoGpsBusLocation = true;
+    try {
+      await _busService.updateDeveloperBusLocation(
+        busMac: assignedBus.busMac,
+        lat: nextPoint.latitude,
+        lon: nextPoint.longitude,
+      );
+      ref.read(dataProvider.notifier).updateBusLocally(
+            assignedBus.copyWith(
+              currentLat: nextPoint.latitude,
+              currentLon: nextPoint.longitude,
+              isOnline: true,
+              lastUpdated: now.millisecondsSinceEpoch,
+            ),
+          );
+      _noGpsAssignedBusMac = assignedBus.busMac;
+      _lastNoGpsSyncedPoint = nextPoint;
+      _lastNoGpsSyncedAt = now;
+    } catch (_) {
+      // Best effort sync for developer mode only.
+    } finally {
+      _isSyncingNoGpsBusLocation = false;
+    }
   }
 
   Future<bool> _handleLocationPermission() async {
@@ -3120,6 +3229,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Widget build(BuildContext context) {
     final buses = ref.watch(busesProvider);
     final routes = ref.watch(routesProvider);
+    final developerSettings = ref.watch(developerSettingsProvider);
     final debugMode = ref.watch(debugProvider).debugMode;
     final isDark = ref.watch(themeProvider).isDark;
     final testMode = ref.watch(testModeProvider);
@@ -3158,6 +3268,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _syncRideReadyCandidate(nearbyBusForRide);
+      _maybeSyncNoGpsAssignedBus(
+        buses: visibleRenderedBuses,
+        noGpsModeEnabled: developerSettings.noGpsModeEnabled,
+      );
     });
 
     return Scaffold(

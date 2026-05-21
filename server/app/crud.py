@@ -22,6 +22,19 @@ feedback_collection = db.get_collection("feedback")
 hardware_location_collection = db.get_collection("hardware_locations")
 blocked_mac_collection = db.get_collection("blocked_macs")
 pm_zone_collection = db.get_collection("pm_zones")
+app_settings_collection = db.get_collection("app_settings")
+
+DEVELOPER_SETTINGS_DOCUMENT_ID = "developer_settings"
+
+
+def _default_developer_settings() -> dict:
+    return {
+        "reset_passenger_count_at_terminal_stop": (
+            settings.RESET_PASSENGER_COUNT_AT_TERMINAL_STOP
+        ),
+        "no_gps_mode_enabled": False,
+        "assigned_bus_mac": None,
+    }
 
 
 def _serialize_mongo_document(document):
@@ -458,6 +471,75 @@ async def delete_hardware_locations_by_mac(mac_address: str):
 # --- PM Zones ---
 async def get_pm_zones(skip: int = 0, limit: int = 100):
     return await pm_zone_collection.find().skip(skip).limit(limit).to_list(limit)
+
+
+async def get_developer_settings() -> dict:
+    document = await app_settings_collection.find_one(
+        {"_id": DEVELOPER_SETTINGS_DOCUMENT_ID},
+    )
+    defaults = _default_developer_settings()
+    if not document:
+        return defaults
+
+    return {
+        "reset_passenger_count_at_terminal_stop": bool(
+            document.get(
+                "reset_passenger_count_at_terminal_stop",
+                defaults["reset_passenger_count_at_terminal_stop"],
+            ),
+        ),
+        "no_gps_mode_enabled": bool(
+            document.get(
+                "no_gps_mode_enabled",
+                defaults["no_gps_mode_enabled"],
+            ),
+        ),
+        "assigned_bus_mac": (
+            str(document.get("assigned_bus_mac")).strip()
+            if document.get("assigned_bus_mac")
+            else defaults["assigned_bus_mac"]
+        ),
+    }
+
+
+async def get_reset_passenger_count_at_terminal_stop() -> bool:
+    developer_settings = await get_developer_settings()
+    return bool(developer_settings["reset_passenger_count_at_terminal_stop"])
+
+
+async def get_no_gps_mode_enabled() -> bool:
+    developer_settings = await get_developer_settings()
+    return bool(developer_settings["no_gps_mode_enabled"])
+
+
+async def update_developer_settings(
+    *,
+    reset_passenger_count_at_terminal_stop: bool | None = None,
+    no_gps_mode_enabled: bool | None = None,
+    assigned_bus_mac: str | None = None,
+) -> dict:
+    update_data = {}
+    if reset_passenger_count_at_terminal_stop is not None:
+        update_data["reset_passenger_count_at_terminal_stop"] = bool(
+            reset_passenger_count_at_terminal_stop
+        )
+    if no_gps_mode_enabled is not None:
+        update_data["no_gps_mode_enabled"] = bool(no_gps_mode_enabled)
+    if assigned_bus_mac is not None:
+        normalized_assigned_bus_mac = assigned_bus_mac.strip()
+        update_data["assigned_bus_mac"] = (
+            normalized_assigned_bus_mac if normalized_assigned_bus_mac else None
+        )
+
+    if update_data:
+        update_data["updated_at"] = datetime.now(timezone.utc)
+        await app_settings_collection.update_one(
+            {"_id": DEVELOPER_SETTINGS_DOCUMENT_ID},
+            {"$set": update_data},
+            upsert=True,
+        )
+
+    return await get_developer_settings()
 
 async def get_pm_zone(zone_id: str):
     return await pm_zone_collection.find_one({"_id": ObjectId(zone_id)})

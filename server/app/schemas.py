@@ -194,3 +194,15 @@ class FirmwareUpdateResponse(BaseModel):
 
 class AdminPasswordRequest(BaseModel):
     password: str
+
+
+class DeveloperSettingsResponse(BaseModel):
+    reset_passenger_count_at_terminal_stop: bool
+    no_gps_mode_enabled: bool
+    assigned_bus_mac: Optional[str] = None
+
+
+class DeveloperSettingsUpdateRequest(BaseModel):
+    reset_passenger_count_at_terminal_stop: Optional[bool] = None
+    no_gps_mode_enabled: Optional[bool] = None
+    assigned_bus_mac: Optional[str] = None

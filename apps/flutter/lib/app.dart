@@ -15,6 +15,7 @@ import 'screens/splash_screen.dart';
 import 'screens/legal_consent_screen.dart';
 import 'screens/legal_document_screen.dart';
 import 'screens/passenger_stats_screen.dart';
+import 'screens/developer_settings_screen.dart';
 import 'screens/wifi_heatmap_screen.dart';
 import 'legal/legal_documents.dart';
 
@@ -110,6 +111,12 @@ final goRouter = GoRouter(
       name: 'passengerStats',
       parentNavigatorKey: _rootNavigatorKey,
       builder: (context, state) => const PassengerStatsScreen(),
+    ),
+    GoRoute(
+      path: '/developer-settings',
+      name: 'developerSettings',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const DeveloperSettingsScreen(),
     ),
     GoRoute(
       path: '/wifi-heatmap',
